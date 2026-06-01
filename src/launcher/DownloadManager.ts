@@ -1,9 +1,12 @@
 import { createHash } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
-import { mkdir, rename, stat, unlink } from 'node:fs/promises';
+import { access, mkdir, rename, stat, unlink } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { finished } from 'node:stream/promises';
 import { EventEmitter } from 'node:events';
 import type { DownloadProgress } from '@/types/launcher';
+import { friendlyErrorMessage } from './errors';
+import type { Logger } from './Logger';
 
 export interface DownloadJob {
   id: string;
@@ -14,14 +17,75 @@ export interface DownloadJob {
   size?: number;
 }
 
+const MAX_RETRIES = 4;
+const BASE_BACKOFF_MS = 750;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export class DownloadManager extends EventEmitter {
   private readonly jobs = new Map<string, DownloadProgress>();
+
+  constructor(private readonly logger?: Logger) {
+    super();
+  }
 
   list(): DownloadProgress[] {
     return [...this.jobs.values()].map((job) => ({ ...job }));
   }
 
   async download(job: DownloadJob): Promise<string> {
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        return await this.downloadOnce(job);
+      } catch (error) {
+        lastError = error;
+        await unlink(`${job.targetPath}.download`).catch(() => undefined);
+        await unlink(job.targetPath).catch(() => undefined);
+
+        if (attempt < MAX_RETRIES - 1) {
+          const delay = BASE_BACKOFF_MS * 2 ** attempt;
+          await this.logger?.warn('download', `Retrying ${job.label} (attempt ${attempt + 2}/${MAX_RETRIES})`, {
+            delay,
+            error: error instanceof Error ? error.message : String(error)
+          });
+          await sleep(delay);
+        }
+      }
+    }
+
+    const message = friendlyErrorMessage(lastError);
+    this.fail(job, message);
+    throw new Error(message);
+  }
+
+  async downloadMany(jobs: DownloadJob[], concurrency: number): Promise<void> {
+    const queue = [...jobs];
+    const errors: Error[] = [];
+    const workers = Array.from({ length: Math.max(1, concurrency) }, async () => {
+      for (;;) {
+        const job = queue.shift();
+        if (!job) {
+          return;
+        }
+        try {
+          await this.download(job);
+        } catch (error) {
+          errors.push(error instanceof Error ? error : new Error(String(error)));
+        }
+      }
+    });
+
+    await Promise.all(workers);
+    if (errors.length) {
+      throw errors[0];
+    }
+  }
+
+  private async downloadOnce(job: DownloadJob): Promise<string> {
     if (await this.isExistingFileValid(job)) {
       this.emitProgress({
         id: job.id,
@@ -40,6 +104,7 @@ export class DownloadManager extends EventEmitter {
 
     const tempPath = `${job.targetPath}.download`;
     await unlink(tempPath).catch(() => undefined);
+    await unlink(job.targetPath).catch(() => undefined);
 
     this.emitProgress({
       id: job.id,
@@ -52,20 +117,27 @@ export class DownloadManager extends EventEmitter {
       speedBytesPerSecond: 0
     });
 
-    const response = await fetch(job.url, {
-      headers: {
-        'User-Agent': 'DawnLauncher/0.1 (+https://dawn.local)'
-      }
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120_000);
+
+    let response: Response;
+    try {
+      response = await fetch(job.url, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'DawnLauncher/0.1 (+https://dawn.local)'
+        }
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
 
     if (!response.ok || !response.body) {
-      const error = `Download failed (${response.status}) ${job.url}`;
-      this.fail(job, error);
-      throw new Error(error);
+      throw new Error(`Download failed (${response.status}) for ${job.label}`);
     }
 
     const totalBytes = Number(response.headers.get('content-length') || job.size || 0) || undefined;
-    const writer = createWriteStream(tempPath);
+    const writer = createWriteStream(tempPath, { flags: 'wx' }).on('error', () => undefined);
     const reader = response.body.getReader();
     const hash = createHash('sha1');
     let receivedBytes = 0;
@@ -81,7 +153,9 @@ export class DownloadManager extends EventEmitter {
 
         const buffer = Buffer.from(value);
         hash.update(buffer);
-        writer.write(buffer);
+        if (!writer.write(buffer)) {
+          await new Promise<void>((resolve) => writer.once('drain', resolve));
+        }
         receivedBytes += buffer.byteLength;
 
         const now = Date.now();
@@ -101,22 +175,39 @@ export class DownloadManager extends EventEmitter {
           });
         }
       }
-    } finally {
-      await new Promise<void>((resolve, reject) => {
-        writer.end(() => resolve());
-        writer.on('error', reject);
-      });
+    } catch (error) {
+      writer.destroy();
+      await unlink(tempPath).catch(() => undefined);
+      throw error;
+    }
+
+    await finished(writer);
+
+    try {
+      await access(tempPath);
+    } catch {
+      throw new Error(`Temporary download file missing for ${job.label}`);
+    }
+
+    const fileStat = await stat(tempPath);
+    if (fileStat.size === 0) {
+      await unlink(tempPath).catch(() => undefined);
+      throw new Error(`Downloaded file is empty for ${job.label}`);
+    }
+
+    if (job.size && fileStat.size !== job.size) {
+      await unlink(tempPath).catch(() => undefined);
+      throw new Error(`Download size mismatch for ${job.label}`);
     }
 
     const actualSha1 = hash.digest('hex');
     if (job.sha1 && actualSha1 !== job.sha1) {
       await unlink(tempPath).catch(() => undefined);
-      const error = `Checksum mismatch for ${job.label}`;
-      this.fail(job, error);
-      throw new Error(error);
+      throw new Error(`Checksum mismatch for ${job.label}`);
     }
 
     await rename(tempPath, job.targetPath);
+
     this.emitProgress({
       id: job.id,
       label: job.label,
@@ -128,38 +219,33 @@ export class DownloadManager extends EventEmitter {
       speedBytesPerSecond: 0
     });
 
+    await this.logger?.debug('download', `Completed ${job.label}`, { targetPath: job.targetPath });
     return job.targetPath;
-  }
-
-  async downloadMany(jobs: DownloadJob[], concurrency: number): Promise<void> {
-    const queue = [...jobs];
-    const workers = Array.from({ length: Math.max(1, concurrency) }, async () => {
-      for (;;) {
-        const job = queue.shift();
-        if (!job) {
-          return;
-        }
-        await this.download(job);
-      }
-    });
-
-    await Promise.all(workers);
   }
 
   private async isExistingFileValid(job: DownloadJob): Promise<boolean> {
     try {
       const file = await stat(job.targetPath);
+      if (file.size === 0) {
+        await unlink(job.targetPath).catch(() => undefined);
+        return false;
+      }
       if (job.size && file.size !== job.size) {
+        await unlink(job.targetPath).catch(() => undefined);
         return false;
       }
 
       if (!job.sha1) {
-        return file.size > 0;
+        return true;
       }
 
       const { readFile } = await import('node:fs/promises');
       const hash = createHash('sha1').update(await readFile(job.targetPath)).digest('hex');
-      return hash === job.sha1;
+      if (hash !== job.sha1) {
+        await unlink(job.targetPath).catch(() => undefined);
+        return false;
+      }
+      return true;
     } catch {
       return false;
     }
@@ -177,6 +263,7 @@ export class DownloadManager extends EventEmitter {
       speedBytesPerSecond: 0,
       error
     });
+    void this.logger?.error('download', error, { label: job.label, url: job.url });
   }
 
   private emitProgress(progress: DownloadProgress): void {

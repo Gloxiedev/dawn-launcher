@@ -1,10 +1,23 @@
 import { Activity, AlertTriangle, Cpu, HardDrive, Play, Search } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import { Button } from './Button';
+import { WindowControls } from './WindowControls';
 import { useLauncherStore } from '@/store/useLauncherStore';
-import type { PageId } from '@/types/launcher';
+import type { PageId, ProcessState } from '@/types/launcher';
 
 const libraryPages: PageId[] = ['mods', 'modpacks', 'resourcepacks', 'shaders'];
+
+const processLabels: Record<ProcessState, string> = {
+  idle: 'Ready',
+  preparing: 'Preparing',
+  downloading: 'Downloading',
+  launching: 'Launching',
+  running: 'Running',
+  stopping: 'Stopping',
+  stopped: 'Stopped',
+  crashed: 'Crashed',
+  exited: 'Exited'
+};
 
 export function TopBar() {
   const instances = useLauncherStore((state) => state.instances);
@@ -14,6 +27,7 @@ export function TopBar() {
   const javaRuntimes = useLauncherStore((state) => state.javaRuntimes);
   const busyLabel = useLauncherStore((state) => state.busyLabel);
   const error = useLauncherStore((state) => state.error);
+  const processStates = useLauncherStore((state) => state.processStates);
   const activePage = useLauncherStore((state) => state.activePage);
   const librarySearch = useLauncherStore((state) => state.librarySearch);
   const launchSelected = useLauncherStore((state) => state.launchSelected);
@@ -23,6 +37,8 @@ export function TopBar() {
   const setSelectedInstance = useLauncherStore((state) => state.setSelectedInstance);
   const setSelectedAccount = useLauncherStore((state) => state.setSelectedAccount);
   const selectedInstance = instances.find((item) => item.id === selectedInstanceId);
+  const processState = selectedInstanceId ? processStates[selectedInstanceId] ?? 'idle' : 'idle';
+  const statusLabel = busyLabel || processLabels[processState];
 
   const submitLibrarySearch = () => {
     if (activePage === 'instances' || libraryPages.includes(activePage)) {
@@ -36,11 +52,24 @@ export function TopBar() {
   };
 
   return (
-    <header className="flex shrink-0 flex-wrap items-center gap-4 px-6 py-3" style={{ WebkitAppRegion: 'drag' } as CSSProperties}>
+    <header className="titlebar flex shrink-0 flex-wrap items-center gap-4 px-6 py-3" style={{ WebkitAppRegion: 'drag' } as CSSProperties}>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-3">
           <h1 className="truncate text-xl font-black tracking-normal">Dawn Launcher</h1>
           <span className="rounded-md border border-white/10 bg-white/[0.06] px-2 py-1 text-xs text-zinc-400">Premium Java</span>
+          <span
+            className={`rounded-md border px-2 py-1 text-xs ${
+              processState === 'running'
+                ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200'
+                : processState === 'launching' || processState === 'downloading' || processState === 'preparing'
+                  ? 'border-orange-300/30 bg-orange-500/10 text-orange-200'
+                  : processState === 'stopping'
+                    ? 'border-yellow-300/30 bg-yellow-500/10 text-yellow-200'
+                    : 'border-white/10 bg-white/[0.06] text-zinc-400'
+            }`}
+          >
+            {statusLabel}
+          </span>
         </div>
         <div className="mt-1 flex items-center gap-4 text-xs text-zinc-400">
           <span className="inline-flex items-center gap-1.5">
@@ -50,7 +79,7 @@ export function TopBar() {
             <HardDrive size={14} /> {selectedInstance?.ramMb ?? 0} MB
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <Activity size={14} /> {busyLabel || 'Ready'}
+            <Activity size={14} /> {statusLabel}
           </span>
           {error && (
             <span className="inline-flex min-w-0 items-center gap-1.5 text-red-300">
@@ -96,9 +125,15 @@ export function TopBar() {
             </option>
           ))}
         </select>
-        <Button tone="primary" icon={<Play size={17} />} onClick={() => void launchSelected()}>
+        <Button
+          tone="primary"
+          icon={<Play size={17} />}
+          onClick={() => void launchSelected()}
+          disabled={processState === 'running' || processState === 'launching' || processState === 'downloading' || processState === 'preparing' || processState === 'stopping'}
+        >
           Play
         </Button>
+        <WindowControls />
       </div>
     </header>
   );

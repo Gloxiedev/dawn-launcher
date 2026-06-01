@@ -4,15 +4,32 @@ import { readdir } from 'node:fs/promises';
 import { delimiter, join } from 'node:path';
 import { promisify } from 'node:util';
 import type { JavaRuntime, LauncherSettings } from '@/types/launcher';
+import { JavaInstallService } from './JavaInstallService';
+import { LauncherPaths } from './LauncherPaths';
+import type { Logger } from './Logger';
 
 const execFileAsync = promisify(execFile);
 
 export class JavaService {
+  private readonly installer: JavaInstallService;
+
+  constructor(
+    private readonly paths: LauncherPaths,
+    private readonly logger?: Logger
+  ) {
+    this.installer = new JavaInstallService(paths, logger);
+  }
+
   async scan(settings: LauncherSettings): Promise<JavaRuntime[]> {
     const candidates = new Set<string>();
 
     if (settings.javaPath) {
       candidates.add(settings.javaPath);
+    }
+
+    const managed = await this.collectManagedRuntimes(settings);
+    for (const path of managed) {
+      candidates.add(path);
     }
 
     if (process.env.JAVA_HOME) {
@@ -46,7 +63,13 @@ export class JavaService {
       return exact ?? newer!;
     }
 
-    throw new Error(`Java ${requiredMajor}+ is required for Minecraft ${gameVersion}. Install Java or set a Java path in Settings.`);
+    await this.logger?.info('java', `Installing Java ${requiredMajor} for Minecraft ${gameVersion}`);
+    const installedPath = await this.installer.ensureInstalled(settings, requiredMajor);
+    const runtime = await this.inspect(installedPath);
+    if (!runtime?.valid) {
+      throw new Error(`Java ${requiredMajor}+ is required for Minecraft ${gameVersion}.`);
+    }
+    return runtime;
   }
 
   requiredMajor(gameVersion: string): number {
@@ -60,7 +83,10 @@ export class JavaService {
     if (major === 1 && minor === 17) {
       return 16;
     }
-    return 8;
+    if (major === 1 && minor <= 16) {
+      return 8;
+    }
+    return 21;
   }
 
   async inspect(path: string): Promise<JavaRuntime | undefined> {
@@ -97,6 +123,15 @@ export class JavaService {
     return process.platform === 'win32' ? 'java.exe' : 'java';
   }
 
+  private async collectManagedRuntimes(settings: LauncherSettings): Promise<string[]> {
+    const candidates = new Set<string>();
+    for (const major of [8, 17, 21, 25]) {
+      const root = join(this.paths.runtimeRoot(settings), `java-${major}`);
+      await this.collectJavaFromRoot(root, candidates);
+    }
+    return [...candidates];
+  }
+
   private commonJavaRoots(): string[] {
     if (process.platform === 'win32') {
       return [
@@ -119,10 +154,14 @@ export class JavaService {
       const entries = await readdir(root, { withFileTypes: true });
       for (const entry of entries) {
         if (!entry.isDirectory()) {
+          if (entry.isFile() && entry.name === this.executableName) {
+            candidates.add(join(root, entry.name));
+          }
           continue;
         }
         candidates.add(join(root, entry.name, 'bin', this.executableName));
         candidates.add(join(root, entry.name, 'Contents', 'Home', 'bin', this.executableName));
+        await this.collectJavaFromRoot(join(root, entry.name), candidates);
       }
     } catch {
       // Common runtime directories may not exist on every machine.

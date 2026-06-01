@@ -10,11 +10,20 @@ export type AccountKind = 'microsoft' | 'offline';
 
 export type DownloadState = 'queued' | 'running' | 'complete' | 'failed' | 'paused';
 
-export type ProcessState = 'idle' | 'preparing' | 'downloading' | 'launching' | 'running' | 'crashed' | 'exited';
+export type ProcessState =
+  | 'idle'
+  | 'preparing'
+  | 'downloading'
+  | 'launching'
+  | 'running'
+  | 'stopping'
+  | 'stopped'
+  | 'crashed'
+  | 'exited';
 
 export interface LauncherSettings {
   accentColor: string;
-  theme: 'dark' | 'midnight' | 'ember' | 'custom';
+  theme: 'dark' | 'light' | 'midnight' | 'ember' | 'custom';
   customThemeCss?: string;
   maxParallelDownloads: number;
   defaultRamMb: number;
@@ -183,11 +192,25 @@ export interface PluginManifest {
   permissions: string[];
 }
 
+export interface ProcessStateEvent {
+  instanceId: string;
+  state: ProcessState;
+}
+
 export interface DawnApi {
   app: {
     getVersion(): Promise<string>;
+    platform: NodeJS.Platform;
     openExternal(url: string): Promise<void>;
     revealPath(path: string): Promise<void>;
+  };
+  window: {
+    minimize(): Promise<void>;
+    maximize(): Promise<void>;
+    unmaximize(): Promise<void>;
+    toggleMaximize(): Promise<void>;
+    close(): Promise<void>;
+    isMaximized(): Promise<boolean>;
   };
   settings: {
     get(): Promise<LauncherSettings>;
@@ -225,6 +248,7 @@ export interface DawnApi {
     installLoader(instanceId: string): Promise<Instance>;
     launch(input: LaunchRequest): Promise<LaunchResult>;
     stop(instanceId: string): Promise<void>;
+    getProcessStates(): Promise<Record<string, ProcessState>>;
   };
   content: {
     list(instanceId: string, kind: ContentKind): Promise<ContentFile[]>;
@@ -256,5 +280,7 @@ export interface DawnApi {
     onNotification(listener: (event: NotificationItem) => void): () => void;
     onContentChanged(listener: (event: ContentChangedEvent) => void): () => void;
     onGalleryChanged(listener: (instanceId: string) => void): () => void;
+    onProcessState(listener: (event: ProcessStateEvent) => void): () => void;
+    onWindowMaximized(listener: (maximized: boolean) => void): () => void;
   };
 }

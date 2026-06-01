@@ -1,5 +1,19 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { ConsoleEvent, ContentChangedEvent, ContentKind, DawnApi, DownloadProgress, Instance, LaunchRequest, LauncherAccount, LauncherSettings, MarketplaceProject, MarketplaceSearchQuery, NotificationItem } from '@/types/launcher';
+import type {
+  ConsoleEvent,
+  ContentChangedEvent,
+  ContentKind,
+  DawnApi,
+  DownloadProgress,
+  Instance,
+  LaunchRequest,
+  LauncherAccount,
+  LauncherSettings,
+  MarketplaceProject,
+  MarketplaceSearchQuery,
+  NotificationItem,
+  ProcessStateEvent
+} from '@/types/launcher';
 
 function on<T>(channel: string, listener: (payload: T) => void): () => void {
   const handler = (_event: Electron.IpcRendererEvent, payload: T) => listener(payload);
@@ -10,8 +24,17 @@ function on<T>(channel: string, listener: (payload: T) => void): () => void {
 const api: DawnApi = {
   app: {
     getVersion: () => ipcRenderer.invoke('app:version'),
+    platform: process.platform,
     openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url),
     revealPath: (path: string) => ipcRenderer.invoke('app:revealPath', path)
+  },
+  window: {
+    minimize: () => ipcRenderer.invoke('window:minimize'),
+    maximize: () => ipcRenderer.invoke('window:maximize'),
+    unmaximize: () => ipcRenderer.invoke('window:unmaximize'),
+    toggleMaximize: () => ipcRenderer.invoke('window:toggleMaximize'),
+    close: () => ipcRenderer.invoke('window:close'),
+    isMaximized: () => ipcRenderer.invoke('window:isMaximized')
   },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
@@ -42,7 +65,8 @@ const api: DawnApi = {
     scanJava: () => ipcRenderer.invoke('minecraft:scanJava'),
     installLoader: (instanceId: string) => ipcRenderer.invoke('minecraft:installLoader', instanceId),
     launch: (input: LaunchRequest) => ipcRenderer.invoke('minecraft:launch', input),
-    stop: (instanceId: string) => ipcRenderer.invoke('minecraft:stop', instanceId)
+    stop: (instanceId: string) => ipcRenderer.invoke('minecraft:stop', instanceId),
+    getProcessStates: () => ipcRenderer.invoke('minecraft:getProcessStates')
   },
   content: {
     list: (instanceId: string, kind: ContentKind) => ipcRenderer.invoke('content:list', instanceId, kind),
@@ -73,7 +97,9 @@ const api: DawnApi = {
     onConsole: (listener: (event: ConsoleEvent) => void) => on('console:event', listener),
     onNotification: (listener: (event: NotificationItem) => void) => on('notification:event', listener),
     onContentChanged: (listener: (event: ContentChangedEvent) => void) => on('content:changed', listener),
-    onGalleryChanged: (listener: (instanceId: string) => void) => on('gallery:changed', listener)
+    onGalleryChanged: (listener: (instanceId: string) => void) => on('gallery:changed', listener),
+    onProcessState: (listener: (event: ProcessStateEvent) => void) => on('process:state', listener),
+    onWindowMaximized: (listener: (maximized: boolean) => void) => on('window:maximized', listener)
   }
 };
 

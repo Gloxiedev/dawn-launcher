@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import { join } from 'node:path';
-import type { DownloadProgress, LauncherAccount, LauncherSettings, MarketplaceProject, MarketplaceSearchQuery, NotificationItem } from '@/types/launcher';
+import type { DownloadProgress, LauncherAccount, LauncherSettings, MarketplaceProject, MarketplaceSearchQuery, NotificationItem, ProcessState } from '@/types/launcher';
 import { MarketplaceService } from '@/api/MarketplaceService';
 import { AccountService } from '@/launcher/AccountService';
 import { ContentService } from '@/launcher/ContentService';
@@ -9,6 +9,7 @@ import { InstanceService } from '@/launcher/InstanceService';
 import { JavaService } from '@/launcher/JavaService';
 import { JsonDatabase } from '@/launcher/JsonDatabase';
 import { LauncherPaths } from '@/launcher/LauncherPaths';
+import { Logger } from '@/launcher/Logger';
 import { GalleryService } from '@/launcher/GalleryService';
 import { PluginService } from '@/launcher/PluginService';
 import { LoaderService } from '@/minecraft/LoaderService';
@@ -18,9 +19,10 @@ import { VersionService } from '@/minecraft/VersionService';
 let mainWindow: BrowserWindow | undefined;
 
 const paths = new LauncherPaths();
+const logger = new Logger(join(app.getPath('userData'), 'logs'));
 const database = new JsonDatabase(paths.databaseFile);
-const downloads = new DownloadManager();
-const javaService = new JavaService();
+const downloads = new DownloadManager(logger);
+const javaService = new JavaService(paths, logger);
 const versionService = new VersionService(paths, downloads);
 const accountService = new AccountService(database);
 const instanceService = new InstanceService(database, paths);
@@ -28,9 +30,24 @@ const contentService = new ContentService(database, instanceService);
 const pluginService = new PluginService(database);
 const galleryService = new GalleryService(database);
 const loaderService = new LoaderService(versionService, downloads, javaService, paths, instanceService);
-const minecraftService = new MinecraftService(database, versionService, loaderService, javaService, instanceService, accountService, (event) => {
-  mainWindow?.webContents.send('console:event', event);
-});
+
+function sendProcessState(instanceId: string, state: ProcessState): void {
+  mainWindow?.webContents.send('process:state', { instanceId, state });
+}
+
+const minecraftService = new MinecraftService(
+  database,
+  versionService,
+  loaderService,
+  javaService,
+  instanceService,
+  accountService,
+  (event) => {
+    mainWindow?.webContents.send('console:event', event);
+  },
+  sendProcessState,
+  logger
+);
 const marketplaceService = new MarketplaceService(database, downloads, paths, instanceService, loaderService);
 
 function sendDownload(progress: DownloadProgress): void {
@@ -44,12 +61,15 @@ function sendNotification(item: NotificationItem): void {
 downloads.on('progress', sendDownload);
 
 async function createWindow(): Promise<void> {
+  const useCustomChrome = process.platform !== 'darwin';
+
   mainWindow = new BrowserWindow({
     width: 1360,
     height: 860,
     minWidth: 1040,
     minHeight: 680,
     show: false,
+    frame: !useCustomChrome,
     backgroundColor: '#080808',
     title: 'Dawn Launcher',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
@@ -60,6 +80,9 @@ async function createWindow(): Promise<void> {
       nodeIntegration: false
     }
   });
+
+  mainWindow.on('maximize', () => mainWindow?.webContents.send('window:maximized', true));
+  mainWindow.on('unmaximize', () => mainWindow?.webContents.send('window:maximized', false));
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
@@ -74,8 +97,25 @@ async function createWindow(): Promise<void> {
 
 function registerIpc(): void {
   ipcMain.handle('app:version', () => app.getVersion());
+  ipcMain.handle('app:platform', () => process.platform);
   ipcMain.handle('app:openExternal', async (_event, url: string) => shell.openExternal(url));
   ipcMain.handle('app:revealPath', async (_event, path: string) => shell.showItemInFolder(path));
+
+  ipcMain.handle('window:minimize', () => mainWindow?.minimize());
+  ipcMain.handle('window:maximize', () => mainWindow?.maximize());
+  ipcMain.handle('window:unmaximize', () => mainWindow?.unmaximize());
+  ipcMain.handle('window:toggleMaximize', () => {
+    if (!mainWindow) {
+      return;
+    }
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow.maximize();
+    }
+  });
+  ipcMain.handle('window:close', () => mainWindow?.close());
+  ipcMain.handle('window:isMaximized', () => mainWindow?.isMaximized() ?? false);
 
   ipcMain.handle('settings:get', async () => (await database.read()).settings);
   ipcMain.handle('settings:update', async (_event, input: Partial<LauncherSettings>) => {
@@ -83,6 +123,7 @@ function registerIpc(): void {
       draft.settings = { ...draft.settings, ...input };
       return draft.settings;
     });
+    logger.setDebugMode(Boolean(settings.experimentalFeatures));
     await instanceService.ensureRoots(settings);
     return settings;
   });
@@ -110,6 +151,7 @@ function registerIpc(): void {
   ipcMain.handle('minecraft:installLoader', (_event, instanceId: string) => minecraftService.installLoader(instanceId));
   ipcMain.handle('minecraft:launch', (_event, input) => minecraftService.launch(input));
   ipcMain.handle('minecraft:stop', (_event, instanceId: string) => minecraftService.stop(instanceId));
+  ipcMain.handle('minecraft:getProcessStates', () => minecraftService.getProcessStates());
 
   ipcMain.handle('content:list', (_event, instanceId: string, kind) => contentService.list(instanceId, kind));
   ipcMain.handle('content:toggle', (_event, instanceId: string, kind, path: string) => contentService.toggle(instanceId, kind, path));
@@ -144,9 +186,11 @@ function registerIpc(): void {
 }
 
 app.whenReady().then(async () => {
+  await logger.init();
   registerIpc();
-  await database.read();
-  await instanceService.ensureRoots((await database.read()).settings);
+  const data = await database.read();
+  logger.setDebugMode(Boolean(data.settings.experimentalFeatures));
+  await instanceService.ensureRoots(data.settings);
   await createWindow();
 });
 
