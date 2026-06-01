@@ -31,10 +31,67 @@
   --aurora-c: rgba(250, 204, 21, 0.07);
 }
 
+:root[data-theme='light'] {
+  color-scheme: light;
+  --page-bg: #f4f4f5;
+  --panel-bg: rgba(255, 255, 255, 0.82);
+  --aurora-a: rgba(255, 122, 26, 0.12);
+  --aurora-b: rgba(46, 213, 172, 0.08);
+  --aurora-c: rgba(255, 122, 26, 0.05);
+}
+
+:root[data-theme='light'] .text-zinc-100,
+:root[data-theme='light'] .text-zinc-300,
+:root[data-theme='light'] .text-zinc-400 {
+  color: #27272a;
+}
+
 :root[data-theme='custom'] {
   --aurora-a: color-mix(in srgb, var(--accent) 24%, transparent);
   --aurora-b: rgba(46, 213, 172, 0.12);
   --aurora-c: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.titlebar {
+  padding-right: 0.5rem;
+}
+
+.window-controls {
+  margin-left: 0.25rem;
+}
+
+.window-control-btn {
+  display: grid;
+  height: 2rem;
+  width: 2rem;
+  place-items: center;
+  border-radius: 0.375rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: #d4d4d8;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+:root[data-theme='light'] .window-control-btn {
+  border-color: rgba(0, 0, 0, 0.08);
+  background: rgba(0, 0, 0, 0.04);
+  color: #3f3f46;
+}
+
+.window-control-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+:root[data-theme='light'] .window-control-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #18181b;
+}
+
+.window-control-btn-close:hover {
+  background: rgba(239, 68, 68, 0.85);
+  border-color: rgba(239, 68, 68, 0.5);
+  color: #fff;
 }
 
 * {

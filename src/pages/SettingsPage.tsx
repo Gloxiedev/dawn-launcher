@@ -11,6 +11,7 @@ const themeAccents: Record<LauncherSettings['theme'], string> = {
   ember: '#ff7a1a',
   midnight: '#38bdf8',
   dark: '#a3e635',
+  light: '#ff7a1a',
   custom: '#ff7a1a'
 };
 
@@ -116,11 +117,12 @@ export function SettingsPage() {
                     <option value="ember">Ember</option>
                     <option value="midnight">Midnight</option>
                     <option value="dark">Dark</option>
+                    <option value="light">Light</option>
                     <option value="custom">Custom</option>
                   </select>
                 </label>
                 <div className="grid grid-cols-2 gap-2 md:col-span-2 sm:grid-cols-4">
-                  {(['ember', 'midnight', 'dark', 'custom'] as const).map((theme) => (
+                  {(['ember', 'midnight', 'dark', 'light', 'custom'] as const).map((theme) => (
                     <button
                       key={theme}
                       type="button"

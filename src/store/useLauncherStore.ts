@@ -1,5 +1,20 @@
 import { create } from 'zustand';
-import type { ConsoleEvent, ContentKind, DeviceCodeStart, DownloadProgress, Instance, JavaRuntime, LauncherAccount, LauncherSettings, MarketplaceProject, MarketplaceSearchQuery, NotificationItem, PageId } from '@/types/launcher';
+import { friendlyErrorMessage } from '@/launcher/errors';
+import type {
+  ConsoleEvent,
+  ContentKind,
+  DeviceCodeStart,
+  DownloadProgress,
+  Instance,
+  JavaRuntime,
+  LauncherAccount,
+  LauncherSettings,
+  MarketplaceProject,
+  MarketplaceSearchQuery,
+  NotificationItem,
+  PageId,
+  ProcessState
+} from '@/types/launcher';
 
 export type { PageId };
 
@@ -12,6 +27,7 @@ interface LauncherState {
   javaRuntimes: JavaRuntime[];
   downloads: DownloadProgress[];
   consoleEvents: ConsoleEvent[];
+  processStates: Record<string, ProcessState>;
   notifications: NotificationItem[];
   librarySearch: string;
   librarySearchNonce: number;
@@ -32,6 +48,7 @@ interface LauncherState {
   setSelectedInstance(id: string): void;
   setSelectedAccount(id: string): Promise<void>;
   launchSelected(): Promise<void>;
+  stopGame(instanceId: string): Promise<void>;
   scanJava(): Promise<void>;
   saveSettings(input: Partial<LauncherSettings>): Promise<void>;
   addOfflineAccount(username: string): Promise<void>;
@@ -50,6 +67,7 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
   javaRuntimes: [],
   downloads: [],
   consoleEvents: [],
+  processStates: {},
   notifications: [],
   librarySearch: '',
   librarySearchNonce: 0,
@@ -70,6 +88,11 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
       }),
       window.dawn.events.onNotification((event) => {
         set((state) => ({ notifications: [event, ...state.notifications].slice(0, 8) }));
+      }),
+      window.dawn.events.onProcessState(({ instanceId, state }) => {
+        set((current) => ({
+          processStates: { ...current.processStates, [instanceId]: state }
+        }));
       })
     ];
     window.addEventListener('beforeunload', () => unsubs.forEach((unsubscribe) => unsubscribe()), { once: true });
@@ -78,17 +101,19 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
   refresh: async () => {
     set({ loading: true, error: undefined });
     try {
-      const [settings, accounts, instances, downloads] = await Promise.all([
+      const [settings, accounts, instances, downloads, processStates] = await Promise.all([
         window.dawn.settings.get(),
         window.dawn.accounts.list(),
         window.dawn.instances.list(),
-        window.dawn.downloads.list()
+        window.dawn.downloads.list(),
+        window.dawn.minecraft.getProcessStates()
       ]);
       set({
         settings,
         accounts,
         instances,
         downloads,
+        processStates,
         selectedAccountId: accounts.find((account) => account.selected)?.id ?? accounts[0]?.id,
         selectedInstanceId: get().selectedInstanceId ?? instances[0]?.id,
         loading: false
@@ -96,7 +121,7 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
       void window.dawn.minecraft.listVersions().then((versions) => set({ versions }));
       void get().scanJava();
     } catch (error) {
-      set({ loading: false, error: error instanceof Error ? error.message : String(error) });
+      set({ loading: false, error: friendlyErrorMessage(error) });
     }
   },
   createInstance: async (input = {}) => {
@@ -134,7 +159,7 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
       await window.dawn.minecraft.launch({ instanceId: selectedInstanceId, accountId: selectedAccountId });
       await get().refresh();
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = friendlyErrorMessage(error);
       set((state) => ({
         error: message,
         consoleEvents: [
@@ -147,6 +172,16 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
           }
         ].slice(-400)
       }));
+    } finally {
+      set({ busyLabel: undefined });
+    }
+  },
+  stopGame: async (instanceId) => {
+    set({ busyLabel: 'Stopping Minecraft' });
+    try {
+      await window.dawn.minecraft.stop(instanceId);
+    } catch (error) {
+      set({ error: friendlyErrorMessage(error) });
     } finally {
       set({ busyLabel: undefined });
     }
@@ -171,8 +206,7 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
     try {
       return await window.dawn.accounts.microsoftStart();
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      set({ error: message });
+      set({ error: friendlyErrorMessage(error) });
       throw error;
     } finally {
       set({ busyLabel: undefined });
@@ -187,8 +221,7 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
         selectedAccountId: account.id
       }));
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      set({ error: message });
+      set({ error: friendlyErrorMessage(error) });
       throw error;
     } finally {
       set({ busyLabel: undefined });
@@ -201,8 +234,7 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
       await window.dawn.marketplace.install(project, instanceId);
       await get().refresh();
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      set({ error: message });
+      set({ error: friendlyErrorMessage(error) });
       throw error;
     } finally {
       set({ busyLabel: undefined });

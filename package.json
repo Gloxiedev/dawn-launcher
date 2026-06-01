@@ -10,11 +10,12 @@
     "dev": "electron-vite dev",
     "build": "tsc --noEmit && electron-vite build",
     "preview": "electron-vite preview",
-    "dist": "npm run build && electron-builder",
-    "dist:all": "npm run build && electron-builder -mwl",
-    "dist:linux": "npm run build && electron-builder -l",
-    "dist:win": "npm run build && electron-builder -w",
-    "dist:mac": "npm run build && electron-builder -m",
+    "clean:release": "node scripts/clean-release.mjs",
+    "dist": "npm run clean:release && npm run build && electron-builder",
+    "dist:all": "npm run clean:release && npm run build && electron-builder -mwl",
+    "dist:linux": "npm run clean:release && npm run build && electron-builder -l",
+    "dist:win": "npm run clean:release && npm run build && electron-builder -w",
+    "dist:mac": "npm run clean:release && npm run build && electron-builder -m",
     "postinstall": "node scripts/repair-electron.mjs",
     "repair:electron": "node scripts/repair-electron.mjs",
     "verify": "node scripts/verify-project.mjs"
@@ -63,17 +64,14 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "artifactName": "${productName}-${version}-Setup.${ext}"
     },
     "win": {
       "target": [
         {
           "target": "nsis",
           "arch": ["x64", "ia32"]
-        },
-        {
-          "target": "portable",
-          "arch": ["x64"]
         }
       ]
     },
