@@ -1,7 +1,8 @@
 import { Activity, AlertTriangle, Cpu, HardDrive, Play, Search } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import { Button } from './Button';
-import { type PageId, useLauncherStore } from '@/store/useLauncherStore';
+import { useLauncherStore } from '@/store/useLauncherStore';
+import type { PageId } from '@/types/launcher';
 
 const libraryPages: PageId[] = ['mods', 'modpacks', 'resourcepacks', 'shaders'];
 
@@ -18,17 +19,24 @@ export function TopBar() {
   const launchSelected = useLauncherStore((state) => state.launchSelected);
   const setActivePage = useLauncherStore((state) => state.setActivePage);
   const setLibrarySearch = useLauncherStore((state) => state.setLibrarySearch);
+  const triggerLibrarySearch = useLauncherStore((state) => state.triggerLibrarySearch);
   const setSelectedInstance = useLauncherStore((state) => state.setSelectedInstance);
   const setSelectedAccount = useLauncherStore((state) => state.setSelectedAccount);
   const selectedInstance = instances.find((item) => item.id === selectedInstanceId);
+
   const submitLibrarySearch = () => {
+    if (activePage === 'instances' || libraryPages.includes(activePage)) {
+      triggerLibrarySearch();
+      return;
+    }
     if (!libraryPages.includes(activePage)) {
       setActivePage('mods');
     }
+    triggerLibrarySearch();
   };
 
   return (
-    <header className="flex min-h-20 flex-wrap items-center gap-4 px-6 py-3" style={{ WebkitAppRegion: 'drag' } as CSSProperties}>
+    <header className="flex shrink-0 flex-wrap items-center gap-4 px-6 py-3" style={{ WebkitAppRegion: 'drag' } as CSSProperties}>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-3">
           <h1 className="truncate text-xl font-black tracking-normal">Dawn Launcher</h1>

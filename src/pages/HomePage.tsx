@@ -3,6 +3,7 @@ import { Cpu, DownloadCloud, HardDrive, Play, Radio, Zap } from 'lucide-react';
 import { Button } from '@/components/Button';
 import { DownloadWidget } from '@/components/DownloadWidget';
 import { MetricCard } from '@/components/MetricCard';
+import { PageShell } from '@/components/PageShell';
 import { Panel } from '@/components/Panel';
 import { useLauncherStore } from '@/store/useLauncherStore';
 
@@ -21,9 +22,45 @@ export function HomePage() {
   const selectedInstance = instances.find((item) => item.id === selectedInstanceId);
   const selectedAccount = accounts.find((item) => item.id === selectedAccountId);
 
+  const sidebar = (
+    <div className="grid gap-5">
+      <DownloadWidget />
+      <Panel className="p-5">
+        <h3 className="font-black">Profile</h3>
+        <div className="mt-4 flex items-center gap-4">
+          <div className="grid h-16 w-16 place-items-center overflow-hidden rounded-lg bg-white/[0.08]">
+            {selectedAccount?.avatarUrl ? <img src={selectedAccount.avatarUrl} alt="" /> : <span className="text-2xl font-black">{selectedAccount?.username?.[0] || 'D'}</span>}
+          </div>
+          <div className="min-w-0">
+            <p className="truncate font-black">{selectedAccount?.username || 'No account'}</p>
+            <p className="text-sm text-zinc-400">{selectedAccount?.kind || 'Add one'}</p>
+          </div>
+        </div>
+      </Panel>
+      <Panel className="p-5">
+        <h3 className="font-black">Quick Launch</h3>
+        <div className="mt-4 grid gap-3">
+          {instances.slice(0, 5).map((instance) => (
+            <Button
+              key={instance.id}
+              className="justify-start"
+              icon={<Play size={15} />}
+              onClick={() => {
+                setSelectedInstance(instance.id);
+                void launchSelected();
+              }}
+            >
+              {instance.name}
+            </Button>
+          ))}
+        </div>
+      </Panel>
+    </div>
+  );
+
   return (
-    <div className="grid h-full min-h-0 grid-cols-1 gap-5 overflow-hidden xl:grid-cols-[minmax(0,1fr)_360px]">
-      <section className="min-h-0 min-w-0 overflow-y-auto pr-1">
+    <PageShell aside={sidebar} asideWidth={360}>
+      <div>
         <Panel className="relative min-h-[370px] overflow-hidden p-7">
           <div className="absolute inset-0 opacity-60 [background:radial-gradient(circle_at_70%_30%,rgba(255,122,26,0.28),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.08),transparent_50%)]" />
           <motion.div
@@ -98,38 +135,7 @@ export function HomePage() {
             </div>
           </Panel>
         </div>
-      </section>
-
-      <aside className="min-h-0 overflow-y-auto pr-1">
-        <div className="grid gap-5">
-          <DownloadWidget />
-          <Panel className="p-5">
-            <h3 className="font-black">Profile</h3>
-            <div className="mt-4 flex items-center gap-4">
-              <div className="grid h-16 w-16 place-items-center overflow-hidden rounded-lg bg-white/[0.08]">
-                {selectedAccount?.avatarUrl ? <img src={selectedAccount.avatarUrl} alt="" /> : <span className="text-2xl font-black">{selectedAccount?.username?.[0] || 'D'}</span>}
-              </div>
-              <div className="min-w-0">
-                <p className="truncate font-black">{selectedAccount?.username || 'No account'}</p>
-                <p className="text-sm text-zinc-400">{selectedAccount?.kind || 'Add one'}</p>
-              </div>
-            </div>
-          </Panel>
-          <Panel className="p-5">
-            <h3 className="font-black">Quick Launch</h3>
-            <div className="mt-4 grid gap-3">
-              {instances.slice(0, 5).map((instance) => (
-                <Button key={instance.id} className="justify-start" icon={<Play size={15} />} onClick={() => {
-                  setSelectedInstance(instance.id);
-                  void launchSelected();
-                }}>
-                  {instance.name}
-                </Button>
-              ))}
-            </div>
-          </Panel>
-        </div>
-      </aside>
-    </div>
+      </div>
+    </PageShell>
   );
 }

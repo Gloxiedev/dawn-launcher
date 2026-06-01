@@ -42,7 +42,7 @@ export function App() {
       <div className="noise-layer" />
       <div className="relative grid h-screen grid-cols-[176px_minmax(0,1fr)]">
         <Sidebar />
-        <main className="flex min-w-0 flex-col">
+        <main className="flex min-h-0 min-w-0 flex-col overflow-hidden">
           <TopBar />
           <section className="min-h-0 flex-1 overflow-hidden px-6 pb-6">
             <AnimatePresence mode="wait">
