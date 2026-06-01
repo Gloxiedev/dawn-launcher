@@ -1,6 +1,7 @@
 import { Eraser, Square } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/Button';
+import { PageShell } from '@/components/PageShell';
 import { Panel } from '@/components/Panel';
 import { useLauncherStore } from '@/store/useLauncherStore';
 import { cn } from '@/utils/cn';
@@ -13,7 +14,7 @@ export function ConsolePage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-3xl font-black tracking-normal">Console</h2>
           <p className="mt-1 text-sm text-zinc-400">Game logs, launch output, and crash status.</p>
@@ -27,7 +28,7 @@ export function ConsolePage() {
           </Button>
         </div>
       </div>
-      <Panel className="min-h-0 flex-1 overflow-y-auto p-4 font-mono text-sm">
+      <Panel className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 font-mono text-sm">
         {visible.map((event, index) => (
           <div key={`${event.time}:${index}`} className="grid grid-cols-[86px_70px_1fr] gap-3 border-b border-white/[0.04] py-1.5">
             <span className="text-zinc-600">{new Date(event.time).toLocaleTimeString()}</span>

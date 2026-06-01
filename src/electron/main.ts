@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import { join } from 'node:path';
-import type { DownloadProgress, LauncherSettings, MarketplaceProject, MarketplaceSearchQuery, NotificationItem } from '@/types/launcher';
+import type { DownloadProgress, LauncherAccount, LauncherSettings, MarketplaceProject, MarketplaceSearchQuery, NotificationItem } from '@/types/launcher';
 import { MarketplaceService } from '@/api/MarketplaceService';
 import { AccountService } from '@/launcher/AccountService';
 import { ContentService } from '@/launcher/ContentService';
@@ -28,10 +28,10 @@ const contentService = new ContentService(database, instanceService);
 const pluginService = new PluginService(database);
 const galleryService = new GalleryService(database);
 const loaderService = new LoaderService(versionService, downloads, javaService, paths, instanceService);
-const minecraftService = new MinecraftService(database, versionService, loaderService, javaService, instanceService, (event) => {
+const minecraftService = new MinecraftService(database, versionService, loaderService, javaService, instanceService, accountService, (event) => {
   mainWindow?.webContents.send('console:event', event);
 });
-const marketplaceService = new MarketplaceService(database, downloads, paths, instanceService);
+const marketplaceService = new MarketplaceService(database, downloads, paths, instanceService, loaderService);
 
 function sendDownload(progress: DownloadProgress): void {
   mainWindow?.webContents.send('download:progress', progress);
@@ -92,7 +92,9 @@ function registerIpc(): void {
   ipcMain.handle('accounts:remove', (_event, id: string) => accountService.remove(id));
   ipcMain.handle('accounts:select', (_event, id: string) => accountService.select(id));
   ipcMain.handle('accounts:microsoftStart', () => accountService.microsoftStart());
+  ipcMain.handle('accounts:microsoftPoll', () => accountService.microsoftPoll());
   ipcMain.handle('accounts:microsoftComplete', () => accountService.microsoftComplete());
+  ipcMain.handle('accounts:ensureSession', (_event, account: LauncherAccount) => accountService.ensureValidSession(account));
 
   ipcMain.handle('instances:list', () => instanceService.list());
   ipcMain.handle('instances:create', (_event, input) => instanceService.create(input));
@@ -117,6 +119,7 @@ function registerIpc(): void {
   ipcMain.handle('marketplace:search', (_event, query: MarketplaceSearchQuery) => marketplaceService.search(query));
   ipcMain.handle('marketplace:install', async (_event, project: MarketplaceProject, instanceId: string) => {
     await marketplaceService.install(project, instanceId);
+    mainWindow?.webContents.send('content:changed', { instanceId, kind: project.projectType });
     sendNotification({
       id: `${project.provider}:${project.id}:${Date.now()}`,
       title: 'Install complete',
@@ -130,7 +133,14 @@ function registerIpc(): void {
   ipcMain.handle('plugins:list', () => pluginService.list());
   ipcMain.handle('plugins:toggle', (_event, id: string) => pluginService.toggle(id));
   ipcMain.handle('gallery:list', (_event, instanceId: string) => galleryService.list(instanceId));
+  ipcMain.handle('gallery:preview', (_event, path: string) => galleryService.preview(path));
+  ipcMain.handle('gallery:watch', (_event, instanceId: string) => galleryService.watchInstance(instanceId));
+  ipcMain.handle('gallery:unwatch', (_event, instanceId: string) => galleryService.unwatchInstance(instanceId));
   ipcMain.handle('gallery:openFolder', (_event, instanceId: string) => galleryService.openFolder(instanceId));
+
+  galleryService.setChangeHandler((instanceId) => {
+    mainWindow?.webContents.send('gallery:changed', instanceId);
+  });
 }
 
 app.whenReady().then(async () => {

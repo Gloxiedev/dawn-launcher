@@ -12,9 +12,9 @@ interface MicrosoftDeviceResponse {
 }
 
 interface MicrosoftTokenResponse {
-  access_token: string;
+  access_token?: string;
   refresh_token?: string;
-  expires_in: number;
+  expires_in?: number;
   error?: string;
   error_description?: string;
 }
@@ -25,6 +25,13 @@ interface PendingMicrosoftAuth {
   expiresAt: number;
   interval: number;
 }
+
+export type MicrosoftPollResult =
+  | { status: 'pending'; interval: number }
+  | { status: 'slow_down'; interval: number }
+  | { status: 'complete'; account: LauncherAccount }
+  | { status: 'expired' }
+  | { status: 'error'; message: string };
 
 export class AccountService {
   private pendingMicrosoftAuth?: PendingMicrosoftAuth;
@@ -92,7 +99,8 @@ export class AccountService {
     });
 
     if (!response.ok) {
-      throw new Error(`Microsoft device login failed (${response.status}).`);
+      const text = await response.text();
+      throw new Error(`Microsoft device login failed (${response.status}): ${text}`);
     }
 
     const payload = (await response.json()) as MicrosoftDeviceResponse;
@@ -100,7 +108,7 @@ export class AccountService {
       clientId,
       deviceCode: payload.device_code,
       expiresAt: Date.now() + payload.expires_in * 1000,
-      interval: payload.interval
+      interval: Math.max(5, payload.interval)
     };
 
     return {
@@ -112,29 +120,114 @@ export class AccountService {
     };
   }
 
-  async microsoftComplete(): Promise<LauncherAccount> {
+  /** Single non-blocking poll step — call from the renderer on an interval. */
+  async microsoftPoll(): Promise<MicrosoftPollResult> {
     const pending = this.pendingMicrosoftAuth;
     if (!pending) {
-      throw new Error('Start Microsoft login first.');
+      return { status: 'error', message: 'Start Microsoft login first.' };
     }
 
-    while (Date.now() < pending.expiresAt) {
-      const token = await this.pollMicrosoftToken(pending);
-      if (token.access_token) {
-        const account = await this.exchangeForMinecraftAccount(token);
-        this.pendingMicrosoftAuth = undefined;
-        await this.database.mutate((draft) => {
-          draft.accounts = draft.accounts.filter((item) => item.uuid !== account.uuid).map((item) => ({ ...item, selected: false }));
-          draft.accounts.push(account);
-        });
-        return account;
+    if (Date.now() >= pending.expiresAt) {
+      this.pendingMicrosoftAuth = undefined;
+      return { status: 'expired' };
+    }
+
+    const token = await this.pollMicrosoftToken(pending);
+    if (token.error === 'authorization_pending') {
+      return { status: 'pending', interval: pending.interval * 1000 };
+    }
+    if (token.error === 'slow_down') {
+      pending.interval = Math.min(pending.interval + 5, 60);
+      return { status: 'slow_down', interval: pending.interval * 1000 };
+    }
+    if (token.error) {
+      this.pendingMicrosoftAuth = undefined;
+      return { status: 'error', message: token.error_description || token.error };
+    }
+
+    if (!token.access_token) {
+      return { status: 'pending', interval: pending.interval * 1000 };
+    }
+
+    try {
+      const account = await this.exchangeForMinecraftAccount(token);
+      this.pendingMicrosoftAuth = undefined;
+      await this.database.mutate((draft) => {
+        draft.accounts = draft.accounts.filter((item) => item.uuid !== account.uuid).map((item) => ({ ...item, selected: false }));
+        draft.accounts.push(account);
+      });
+      return { status: 'complete', account };
+    } catch (error) {
+      this.pendingMicrosoftAuth = undefined;
+      return { status: 'error', message: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  async microsoftComplete(): Promise<LauncherAccount> {
+    const result = await this.microsoftPoll();
+    if (result.status === 'complete') {
+      return result.account;
+    }
+    if (result.status === 'expired') {
+      throw new Error('Microsoft login expired. Start a new login request.');
+    }
+    if (result.status === 'error') {
+      throw new Error(result.message);
+    }
+    throw new Error('Sign in is still pending. Complete the browser step, then try again.');
+  }
+
+  async ensureValidSession(account: LauncherAccount): Promise<LauncherAccount> {
+    if (account.kind !== 'microsoft') {
+      return account;
+    }
+
+    const expiresAt = account.expiresAt ?? 0;
+    if (account.accessToken && Date.now() < expiresAt - 60_000) {
+      return account;
+    }
+
+    if (!account.refreshToken) {
+      throw new Error('Microsoft session expired. Sign in again from Accounts.');
+    }
+
+    const { settings } = await this.database.read();
+    const clientId = (settings.microsoftClientId || process.env.DAWN_MICROSOFT_CLIENT_ID || '').trim();
+    if (!clientId) {
+      throw new Error('Microsoft client ID is missing. Add it in Settings.');
+    }
+
+    const response = await fetch('https://login.microsoftonline.com/consumers/oauth2/v2.0/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: clientId,
+        grant_type: 'refresh_token',
+        refresh_token: account.refreshToken,
+        scope: 'XboxLive.signin offline_access'
+      })
+    });
+
+    const payload = (await response.json()) as MicrosoftTokenResponse;
+    if (!response.ok || !payload.access_token) {
+      throw new Error(payload.error_description || payload.error || 'Failed to refresh Microsoft session.');
+    }
+
+    const refreshed = await this.exchangeForMinecraftAccount({
+      access_token: payload.access_token,
+      refresh_token: payload.refresh_token ?? account.refreshToken,
+      expires_in: payload.expires_in
+    });
+
+    const updated: LauncherAccount = { ...refreshed, id: account.id, selected: account.selected };
+    await this.database.mutate((draft) => {
+      const index = draft.accounts.findIndex((item) => item.id === account.id);
+      if (index !== -1) {
+        draft.accounts[index] = updated;
       }
+    });
 
-      await new Promise((resolve) => setTimeout(resolve, pending.interval * 1000));
-    }
-
-    this.pendingMicrosoftAuth = undefined;
-    throw new Error('Microsoft login expired. Start a new login request.');
+    return updated;
   }
 
   private async pollMicrosoftToken(pending: PendingMicrosoftAuth): Promise<MicrosoftTokenResponse> {
@@ -148,18 +241,14 @@ export class AccountService {
       })
     });
 
-    const payload = (await response.json()) as MicrosoftTokenResponse;
-    if (payload.error === 'authorization_pending') {
-      return payload;
-    }
-    if (payload.error) {
-      throw new Error(payload.error_description || payload.error);
-    }
-
-    return payload;
+    return (await response.json()) as MicrosoftTokenResponse;
   }
 
   private async exchangeForMinecraftAccount(token: MicrosoftTokenResponse): Promise<LauncherAccount> {
+    if (!token.access_token) {
+      throw new Error('Microsoft did not return an access token.');
+    }
+
     const xbl = await this.postJson<{ Token: string; DisplayClaims: { xui: { uhs: string }[] } }>(
       'https://user.auth.xboxlive.com/user/authenticate',
       {
@@ -187,7 +276,7 @@ export class AccountService {
 
     const uhs = xsts.DisplayClaims.xui[0]?.uhs;
     if (!uhs) {
-      throw new Error('Xbox Live did not return a user hash for this account. The account may not have Xbox Live enabled.');
+      throw new Error('Xbox Live did not return a user hash. Enable Xbox Live on this Microsoft account.');
     }
 
     const minecraft = await this.postJson<{ access_token: string; expires_in: number }>(
@@ -197,15 +286,21 @@ export class AccountService {
       }
     );
 
-    if (!minecraft.access_token) {
-      throw new Error('Failed to obtain Minecraft access token. Please try signing in again.');
-    }
-
-    const entitlements = await fetch('https://api.minecraftservices.com/entitlements/mcstore', {
+    const entitlementsResponse = await fetch('https://api.minecraftservices.com/entitlements/mcstore', {
       headers: { Authorization: `Bearer ${minecraft.access_token}` }
     });
-    if (!entitlements.ok) {
-      throw new Error('This Microsoft account does not have Minecraft Java Edition. Ensure you own the game.');
+    if (!entitlementsResponse.ok) {
+      throw new Error('Could not verify Minecraft ownership for this account.');
+    }
+
+    const entitlements = (await entitlementsResponse.json()) as {
+      items?: Array<{ name?: string }>;
+    };
+    const ownsJava = entitlements.items?.some(
+      (item) => item.name === 'product_minecraft' || item.name === 'game_minecraft'
+    );
+    if (!ownsJava) {
+      throw new Error('This Microsoft account does not own Minecraft Java Edition.');
     }
 
     const profileResponse = await fetch('https://api.minecraftservices.com/minecraft/profile', {
@@ -213,12 +308,12 @@ export class AccountService {
     });
 
     if (!profileResponse.ok) {
-      throw new Error('This Microsoft account does not have a Minecraft Java profile. You may need to create one first.');
+      throw new Error('No Minecraft Java profile found. Create one at minecraft.net first.');
     }
 
     const profile = (await profileResponse.json()) as { id: string; name: string };
     if (!profile.id || !profile.name) {
-      throw new Error('Invalid Minecraft profile data received. Please try signing in again.');
+      throw new Error('Invalid Minecraft profile data received.');
     }
 
     return {
@@ -228,46 +323,39 @@ export class AccountService {
       uuid: profile.id,
       accessToken: minecraft.access_token,
       refreshToken: token.refresh_token,
-      expiresAt: Date.now() + minecraft.expires_in * 1000,
+      expiresAt: Date.now() + (token.expires_in ?? minecraft.expires_in) * 1000,
       avatarUrl: `https://crafatar.com/avatars/${profile.id}?overlay`,
       selected: true
     };
   }
 
   private async postJson<T>(url: string, body: unknown): Promise<T> {
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json'
-        },
-        body: JSON.stringify(body)
-      });
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
 
-      if (!response.ok) {
-        const text = await response.text();
-        let errorMsg = `Authentication request failed (${response.status}).`;
-        try {
-          const error = JSON.parse(text);
-          if (error.XErr) {
-            errorMsg = `Xbox error: ${error.XErr}. Check your Microsoft account status.`;
-          } else if (error.error) {
-            errorMsg = error.error_description || error.error;
-          }
-        } catch {
-          errorMsg = text || errorMsg;
+    if (!response.ok) {
+      const text = await response.text();
+      let errorMsg = `Authentication request failed (${response.status}).`;
+      try {
+        const error = JSON.parse(text) as { XErr?: number; error?: string; error_description?: string };
+        if (error.XErr) {
+          errorMsg = `Xbox error ${error.XErr}. Verify Xbox Live is enabled for this account.`;
+        } else if (error.error) {
+          errorMsg = error.error_description || error.error;
         }
-        throw new Error(errorMsg);
+      } catch {
+        errorMsg = text || errorMsg;
       }
-
-      return (await response.json()) as T;
-    } catch (error) {
-      if (error instanceof Error) {
-        throw error;
-      }
-      throw new Error(`Network error during authentication: ${String(error)}`);
+      throw new Error(errorMsg);
     }
+
+    return (await response.json()) as T;
   }
 
   private offlineUuid(username: string): string {

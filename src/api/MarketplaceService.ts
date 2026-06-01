@@ -1,12 +1,14 @@
 import AdmZip from 'adm-zip';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import type { ContentKind, Instance, LauncherSettings, MarketplaceProject, MarketplaceSearchQuery } from '@/types/launcher';
 import type { DownloadJob } from '@/launcher/DownloadManager';
+import { assertContentMatchesKind } from '@/launcher/ContentValidation';
 import { DownloadManager } from '@/launcher/DownloadManager';
 import { JsonDatabase } from '@/launcher/JsonDatabase';
 import { LauncherPaths } from '@/launcher/LauncherPaths';
 import { InstanceService } from '@/launcher/InstanceService';
+import { LoaderService } from '@/minecraft/LoaderService';
 
 const curseForgeClassIds: Record<ContentKind, number> = {
   mod: 6,
@@ -15,12 +17,25 @@ const curseForgeClassIds: Record<ContentKind, number> = {
   shader: 6552
 };
 
+interface ModrinthVersion {
+  id: string;
+  name: string;
+  version_number: string;
+  files: Array<{ url: string; filename: string; primary: boolean; hashes?: { sha1?: string }; size?: number }>;
+  dependencies?: Array<{
+    project_id?: string;
+    version_id?: string;
+    dependency_type?: string;
+  }>;
+}
+
 export class MarketplaceService {
   constructor(
     private readonly database: JsonDatabase,
     private readonly downloads: DownloadManager,
     private readonly paths: LauncherPaths,
-    private readonly instances: InstanceService
+    private readonly instances: InstanceService,
+    private readonly loaders: LoaderService
   ) {}
 
   async search(query: MarketplaceSearchQuery): Promise<MarketplaceProject[]> {
@@ -34,19 +49,17 @@ export class MarketplaceService {
       throw new Error('Instance not found.');
     }
 
+    if (project.projectType === 'mod' && instance.loader === 'vanilla') {
+      throw new Error('Cannot install mods on vanilla instances. Install Fabric, Forge, NeoForge, or Quilt first.');
+    }
+
     if (project.projectType === 'modpack') {
       if (project.provider === 'modrinth') {
         await this.installModrinth(project, instance, data.settings);
       } else {
-        await this.installCurseForge(project, instance, data.settings);
+        await this.installCurseForgeModpack(project, instance, data.settings);
       }
       return;
-    }
-
-    if (project.projectType === 'mod') {
-      if (instance.loader === 'vanilla') {
-        throw new Error('Cannot install mods to vanilla instances. Please install a mod loader first (Fabric, Forge, NeoForge, or Quilt).');
-      }
     }
 
     if (project.provider === 'modrinth') {
@@ -55,6 +68,20 @@ export class MarketplaceService {
     }
 
     await this.installCurseForge(project, instance, data.settings);
+
+    if (project.projectType === 'mod') {
+      await this.ensureLoaderReady(instance, data.settings);
+    }
+  }
+
+  private async ensureLoaderReady(instance: Instance, settings: LauncherSettings): Promise<Instance> {
+    if (instance.loader === 'vanilla') {
+      return instance;
+    }
+    if (instance.launchVersionId) {
+      return instance;
+    }
+    return this.loaders.install(instance, settings);
   }
 
   private async searchModrinth(query: MarketplaceSearchQuery): Promise<MarketplaceProject[]> {
@@ -170,7 +197,17 @@ export class MarketplaceService {
     }));
   }
 
-  private async installModrinth(project: MarketplaceProject, instance: Instance, settings: LauncherSettings): Promise<void> {
+  private async installModrinth(
+    project: MarketplaceProject,
+    instance: Instance,
+    settings: LauncherSettings,
+    visited = new Set<string>()
+  ): Promise<void> {
+    if (visited.has(project.id)) {
+      return;
+    }
+    visited.add(project.id);
+
     const loaders = instance.loader !== 'vanilla' ? [instance.loader] : undefined;
     const params = new URLSearchParams();
     params.set('game_versions', JSON.stringify([instance.gameVersion]));
@@ -182,22 +219,44 @@ export class MarketplaceService {
       headers: { 'User-Agent': 'DawnLauncher/0.1 (+https://dawn.local)' }
     });
     if (!response.ok) {
-      throw new Error(`Modrinth versions failed (${response.status}).`);
+      throw new Error(`Modrinth versions failed (${response.status}) for ${project.title}.`);
     }
 
-    const versions = (await response.json()) as Array<{
-      id: string;
-      name: string;
-      version_number: string;
-      files: Array<{ url: string; filename: string; primary: boolean; hashes?: { sha1?: string }; size?: number }>;
-    }>;
+    const versions = (await response.json()) as ModrinthVersion[];
     const version = versions[0];
-    const file = version?.files.find((item) => item.primary) ?? version?.files[0];
-    if (!file) {
-      throw new Error('No compatible Modrinth file found for this instance.');
+    if (!version) {
+      throw new Error(`No compatible Modrinth version found for ${project.title} on ${instance.gameVersion}.`);
     }
 
-    const tempPath = join(this.paths.downloadsRoot(settings), 'marketplace', file.filename);
+    if (project.projectType === 'mod') {
+      for (const dependency of version.dependencies ?? []) {
+        if (dependency.dependency_type !== 'required' && dependency.dependency_type !== 'embedded') {
+          continue;
+        }
+        if (dependency.project_id) {
+          await this.installModrinth(
+            {
+              provider: 'modrinth',
+              id: dependency.project_id,
+              title: dependency.project_id,
+              description: '',
+              categories: [],
+              projectType: 'mod'
+            },
+            instance,
+            settings,
+            visited
+          );
+        }
+      }
+    }
+
+    const file = version.files.find((item) => item.primary) ?? version.files[0];
+    if (!file) {
+      throw new Error(`No downloadable file for ${project.title}.`);
+    }
+
+    const tempPath = join(this.paths.downloadsRoot(settings), 'marketplace', `${version.id}-${file.filename}`);
     await this.downloads.download({
       id: `modrinth:${project.id}:${version.id}`,
       label: `${project.title} ${version.version_number}`,
@@ -207,14 +266,23 @@ export class MarketplaceService {
       size: file.size
     });
 
-    if (project.projectType === 'modpack' && file.filename.endsWith('.mrpack')) {
-      await this.installMrPack(tempPath, instance, settings);
-      return;
+    if (project.projectType === 'modpack') {
+      if (file.filename.endsWith('.mrpack')) {
+        await this.installMrPack(tempPath, instance, settings);
+        return;
+      }
+      throw new Error('Only .mrpack Modrinth modpacks are supported. Choose a pack with the Modrinth format.');
     }
 
+    await assertContentMatchesKind(tempPath, project.projectType);
     const targetDir = this.instances.getContentDir(instance, project.projectType);
     await mkdir(targetDir, { recursive: true });
-    await import('node:fs/promises').then(({ copyFile }) => copyFile(tempPath, join(targetDir, file.filename)));
+    const targetPath = join(targetDir, file.filename);
+    await copyFile(tempPath, targetPath);
+
+    if (project.projectType === 'mod') {
+      await this.ensureLoaderReady(instance, settings);
+    }
   }
 
   private async installCurseForge(project: MarketplaceProject, instance: Instance, settings: LauncherSettings): Promise<void> {
@@ -227,6 +295,9 @@ export class MarketplaceService {
       gameVersion: instance.gameVersion,
       pageSize: '20'
     });
+    if (instance.loader !== 'vanilla' && project.projectType === 'mod') {
+      params.set('modLoaderType', instance.loader === 'fabric' ? '4' : instance.loader === 'forge' ? '1' : instance.loader === 'quilt' ? '5' : '6');
+    }
 
     const response = await fetch(`https://api.curseforge.com/v1/mods/${project.id}/files?${params}`, {
       headers: { Accept: 'application/json', 'x-api-key': apiKey }
@@ -244,15 +315,74 @@ export class MarketplaceService {
     }
 
     const targetDir = this.instances.getContentDir(instance, project.projectType);
+    await mkdir(targetDir, { recursive: true });
+    const targetPath = join(targetDir, file.fileName);
     const sha1 = file.hashes?.find((hash) => hash.algo === 1)?.value;
     await this.downloads.download({
       id: `curseforge:${project.id}:${file.id}`,
       label: file.displayName,
       url: file.downloadUrl,
-      targetPath: join(targetDir, file.fileName),
+      targetPath,
       sha1,
       size: file.fileLength
     });
+
+    if (project.projectType !== 'modpack') {
+      await assertContentMatchesKind(targetPath, project.projectType);
+    }
+  }
+
+  private async installCurseForgeModpack(project: MarketplaceProject, instance: Instance, settings: LauncherSettings): Promise<void> {
+    const apiKey = settings.curseForgeApiKey || process.env.CURSEFORGE_API_KEY;
+    if (!apiKey) {
+      throw new Error('Add a CurseForge API key in Settings before installing CurseForge modpacks.');
+    }
+
+    const response = await fetch(`https://api.curseforge.com/v1/mods/${project.id}/files?gameVersion=${encodeURIComponent(instance.gameVersion)}&pageSize=1`, {
+      headers: { Accept: 'application/json', 'x-api-key': apiKey }
+    });
+    if (!response.ok) {
+      throw new Error(`CurseForge modpack files failed (${response.status}).`);
+    }
+
+    const payload = (await response.json()) as {
+      data: Array<{ id: number; displayName: string; downloadUrl?: string }>;
+    };
+    const file = payload.data[0];
+    if (!file?.downloadUrl) {
+      throw new Error('CurseForge modpack download URL is unavailable.');
+    }
+
+    const tempPath = join(this.paths.downloadsRoot(settings), 'marketplace', `curseforge-modpack-${file.id}.zip`);
+    await this.downloads.download({
+      id: `curseforge-modpack:${project.id}:${file.id}`,
+      label: file.displayName,
+      url: file.downloadUrl,
+      targetPath: tempPath
+    });
+
+    const zip = new AdmZip(tempPath);
+    for (const entry of zip.getEntries()) {
+      if (entry.isDirectory) {
+        continue;
+      }
+      const name = entry.entryName.replace(/\\/g, '/');
+      if (name.startsWith('overrides/')) {
+        const relative = name.slice('overrides/'.length);
+        const target = join(instance.gameDir, relative);
+        await mkdir(dirname(target), { recursive: true });
+        await writeFile(target, entry.getData());
+        continue;
+      }
+      if (name.startsWith('mods/')) {
+        const target = join(instance.gameDir, name);
+        await mkdir(dirname(target), { recursive: true });
+        await writeFile(target, entry.getData());
+      }
+    }
+
+    await rm(tempPath, { force: true }).catch(() => undefined);
+    await this.ensureLoaderReady(instance, settings);
   }
 
   private async installMrPack(path: string, instance: Instance, settings: LauncherSettings): Promise<void> {
@@ -290,12 +420,29 @@ export class MarketplaceService {
     await this.instances.update(instance.id, {
       gameVersion: index.dependencies?.minecraft ?? instance.gameVersion,
       loader:
-        index.dependencies?.['fabric-loader'] ? 'fabric' : index.dependencies?.forge ? 'forge' : index.dependencies?.neoforge ? 'neoforge' : index.dependencies?.['quilt-loader'] ? 'quilt' : instance.loader,
+        index.dependencies?.['fabric-loader']
+          ? 'fabric'
+          : index.dependencies?.forge
+            ? 'forge'
+            : index.dependencies?.neoforge
+              ? 'neoforge'
+              : index.dependencies?.['quilt-loader']
+                ? 'quilt'
+                : instance.loader,
       loaderVersion:
-        index.dependencies?.['fabric-loader'] ?? index.dependencies?.forge ?? index.dependencies?.neoforge ?? index.dependencies?.['quilt-loader'] ?? instance.loaderVersion
+        index.dependencies?.['fabric-loader'] ??
+        index.dependencies?.forge ??
+        index.dependencies?.neoforge ??
+        index.dependencies?.['quilt-loader'] ??
+        instance.loaderVersion,
+      launchVersionId: undefined
     });
 
     await rm(path, { force: true }).catch(() => undefined);
+    const refreshed = (await this.database.read()).instances.find((item) => item.id === instance.id);
+    if (refreshed) {
+      await this.ensureLoaderReady(refreshed, settings);
+    }
   }
 
   private modrinthType(kind: ContentKind): string {

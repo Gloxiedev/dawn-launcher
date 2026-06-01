@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
 import { Box, Camera, ChevronRight, Gamepad2, Home, Layers3, Package, Settings, Sparkles, TerminalSquare, UserRound, WandSparkles } from 'lucide-react';
 import type { ComponentType } from 'react';
-import type { PageId } from '@/store/useLauncherStore';
+import type { PageId } from '@/types/launcher';
 import { useLauncherStore } from '@/store/useLauncherStore';
 import { cn } from '@/utils/cn';
 

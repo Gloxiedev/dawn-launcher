@@ -1,7 +1,7 @@
 import { create } from 'zustand';
-import type { ConsoleEvent, ContentKind, DeviceCodeStart, DownloadProgress, Instance, JavaRuntime, LauncherAccount, LauncherSettings, MarketplaceProject, MarketplaceSearchQuery, NotificationItem } from '@/types/launcher';
+import type { ConsoleEvent, ContentKind, DeviceCodeStart, DownloadProgress, Instance, JavaRuntime, LauncherAccount, LauncherSettings, MarketplaceProject, MarketplaceSearchQuery, NotificationItem, PageId } from '@/types/launcher';
 
-export type PageId = 'home' | 'instances' | 'mods' | 'modpacks' | 'resourcepacks' | 'shaders' | 'accounts' | 'settings' | 'console' | 'gallery';
+export type { PageId };
 
 interface LauncherState {
   activePage: PageId;
@@ -14,6 +14,7 @@ interface LauncherState {
   consoleEvents: ConsoleEvent[];
   notifications: NotificationItem[];
   librarySearch: string;
+  librarySearchNonce: number;
   selectedInstanceId?: string;
   selectedAccountId?: string;
   loading: boolean;
@@ -21,6 +22,7 @@ interface LauncherState {
   error?: string;
   setActivePage(page: PageId): void;
   setLibrarySearch(query: string): void;
+  triggerLibrarySearch(): void;
   bootstrap(): Promise<void>;
   refresh(): Promise<void>;
   createInstance(input?: Partial<Instance>): Promise<void>;
@@ -50,9 +52,11 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
   consoleEvents: [],
   notifications: [],
   librarySearch: '',
+  librarySearchNonce: 0,
   loading: true,
   setActivePage: (page) => set({ activePage: page }),
   setLibrarySearch: (query) => set({ librarySearch: query }),
+  triggerLibrarySearch: () => set((state) => ({ librarySearchNonce: state.librarySearchNonce + 1 })),
   setSelectedInstance: (id) => set({ selectedInstanceId: id }),
   bootstrap: async () => {
     const unsubs = [
@@ -192,9 +196,14 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
   },
   searchMarketplace: (query) => window.dawn.marketplace.search(query),
   installProject: async (project, instanceId) => {
-    set({ busyLabel: `Installing ${project.title}` });
+    set({ busyLabel: `Installing ${project.title}`, error: undefined });
     try {
       await window.dawn.marketplace.install(project, instanceId);
+      await get().refresh();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      set({ error: message });
+      throw error;
     } finally {
       set({ busyLabel: undefined });
     }

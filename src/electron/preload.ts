@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { ConsoleEvent, ContentKind, DawnApi, DownloadProgress, Instance, LaunchRequest, LauncherSettings, MarketplaceProject, MarketplaceSearchQuery, NotificationItem } from '@/types/launcher';
+import type { ConsoleEvent, ContentChangedEvent, ContentKind, DawnApi, DownloadProgress, Instance, LaunchRequest, LauncherAccount, LauncherSettings, MarketplaceProject, MarketplaceSearchQuery, NotificationItem } from '@/types/launcher';
 
 function on<T>(channel: string, listener: (payload: T) => void): () => void {
   const handler = (_event: Electron.IpcRendererEvent, payload: T) => listener(payload);
@@ -23,7 +23,9 @@ const api: DawnApi = {
     remove: (id: string) => ipcRenderer.invoke('accounts:remove', id),
     select: (id: string) => ipcRenderer.invoke('accounts:select', id),
     microsoftStart: () => ipcRenderer.invoke('accounts:microsoftStart'),
-    microsoftComplete: () => ipcRenderer.invoke('accounts:microsoftComplete')
+    microsoftPoll: () => ipcRenderer.invoke('accounts:microsoftPoll'),
+    microsoftComplete: () => ipcRenderer.invoke('accounts:microsoftComplete'),
+    ensureSession: (account: LauncherAccount) => ipcRenderer.invoke('accounts:ensureSession', account)
   },
   instances: {
     list: () => ipcRenderer.invoke('instances:list'),
@@ -61,12 +63,17 @@ const api: DawnApi = {
   },
   gallery: {
     list: (instanceId: string) => ipcRenderer.invoke('gallery:list', instanceId),
+    preview: (path: string) => ipcRenderer.invoke('gallery:preview', path),
+    watch: (instanceId: string) => ipcRenderer.invoke('gallery:watch', instanceId),
+    unwatch: (instanceId: string) => ipcRenderer.invoke('gallery:unwatch', instanceId),
     openFolder: (instanceId: string) => ipcRenderer.invoke('gallery:openFolder', instanceId)
   },
   events: {
     onDownloadProgress: (listener: (progress: DownloadProgress) => void) => on('download:progress', listener),
     onConsole: (listener: (event: ConsoleEvent) => void) => on('console:event', listener),
-    onNotification: (listener: (event: NotificationItem) => void) => on('notification:event', listener)
+    onNotification: (listener: (event: NotificationItem) => void) => on('notification:event', listener),
+    onContentChanged: (listener: (event: ContentChangedEvent) => void) => on('content:changed', listener),
+    onGalleryChanged: (listener: (instanceId: string) => void) => on('gallery:changed', listener)
   }
 };
 

@@ -1,7 +1,9 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import type { ConsoleEvent, Instance, LaunchRequest, LaunchResult, LauncherAccount, ProcessState } from '@/types/launcher';
+import { AccountService } from '@/launcher/AccountService';
 import { JsonDatabase } from '@/launcher/JsonDatabase';
 import { InstanceService } from '@/launcher/InstanceService';
+import { validateInstanceBeforeLaunch } from '@/launcher/InstanceValidation';
 import { JavaService } from '@/launcher/JavaService';
 import { LoaderService } from './LoaderService';
 import { VersionService } from './VersionService';
@@ -15,6 +17,7 @@ export class MinecraftService {
     private readonly loaders: LoaderService,
     private readonly java: JavaService,
     private readonly instances: InstanceService,
+    private readonly accounts: AccountService,
     private readonly onConsole: (event: ConsoleEvent) => void
   ) {}
 
@@ -39,7 +42,7 @@ export class MinecraftService {
     try {
       const data = await this.database.read();
       let instance = data.instances.find((item) => item.id === input.instanceId);
-      const account = data.accounts.find((item) => item.id === input.accountId);
+      let account = data.accounts.find((item) => item.id === input.accountId);
       if (!instance) {
         throw new Error('Instance not found.');
       }
@@ -48,6 +51,18 @@ export class MinecraftService {
       }
 
       this.emit(input.instanceId, 'info', 'Validating instance');
+
+      if (account.kind === 'microsoft') {
+        account = await this.accounts.ensureValidSession(account);
+      }
+
+      const validationIssues = await validateInstanceBeforeLaunch(instance);
+      for (const issue of validationIssues) {
+        this.emit(input.instanceId, issue.level, issue.message);
+        if (issue.level === 'error') {
+          throw new Error(issue.message);
+        }
+      }
       
       if (instance.loader !== 'vanilla' && !instance.launchVersionId) {
         this.emit(input.instanceId, 'info', `Installing ${instance.loader} loader`);

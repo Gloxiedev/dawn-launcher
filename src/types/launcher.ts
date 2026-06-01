@@ -1,3 +1,5 @@
+export type PageId = 'home' | 'instances' | 'mods' | 'modpacks' | 'resourcepacks' | 'shaders' | 'accounts' | 'settings' | 'console' | 'gallery';
+
 export type LoaderKind = 'vanilla' | 'fabric' | 'forge' | 'neoforge' | 'quilt';
 
 export type ContentKind = 'mod' | 'modpack' | 'resourcepack' | 'shader';
@@ -153,9 +155,13 @@ export interface NotificationItem {
 export interface ScreenshotItem {
   name: string;
   path: string;
-  url: string;
   size: number;
   createdAt: number;
+}
+
+export interface ContentChangedEvent {
+  instanceId: string;
+  kind: ContentKind;
 }
 
 export interface LauncherDatabaseShape {
@@ -193,7 +199,15 @@ export interface DawnApi {
     remove(id: string): Promise<void>;
     select(id: string): Promise<LauncherAccount[]>;
     microsoftStart(): Promise<DeviceCodeStart>;
+    microsoftPoll(): Promise<
+      | { status: 'pending'; interval: number }
+      | { status: 'slow_down'; interval: number }
+      | { status: 'complete'; account: LauncherAccount }
+      | { status: 'expired' }
+      | { status: 'error'; message: string }
+    >;
     microsoftComplete(): Promise<LauncherAccount>;
+    ensureSession(account: LauncherAccount): Promise<LauncherAccount>;
   };
   instances: {
     list(): Promise<Instance[]>;
@@ -231,11 +245,16 @@ export interface DawnApi {
   };
   gallery: {
     list(instanceId: string): Promise<ScreenshotItem[]>;
+    preview(path: string): Promise<string>;
+    watch(instanceId: string): Promise<void>;
+    unwatch(instanceId: string): Promise<void>;
     openFolder(instanceId: string): Promise<void>;
   };
   events: {
     onDownloadProgress(listener: (progress: DownloadProgress) => void): () => void;
     onConsole(listener: (event: ConsoleEvent) => void): () => void;
     onNotification(listener: (event: NotificationItem) => void): () => void;
+    onContentChanged(listener: (event: ContentChangedEvent) => void): () => void;
+    onGalleryChanged(listener: (instanceId: string) => void): () => void;
   };
 }
