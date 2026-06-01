@@ -37,7 +37,7 @@ export function ContentTable({ instanceId, kind, query = '' }: ContentTableProps
           Import
         </Button>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {filtered.map((file) => (
           <div key={file.path} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-b border-white/[0.06] px-4 py-3">
             <div className="flex min-w-0 items-center gap-3">

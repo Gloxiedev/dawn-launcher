@@ -34,6 +34,21 @@ export class MarketplaceService {
       throw new Error('Instance not found.');
     }
 
+    if (project.projectType === 'modpack') {
+      if (project.provider === 'modrinth') {
+        await this.installModrinth(project, instance, data.settings);
+      } else {
+        await this.installCurseForge(project, instance, data.settings);
+      }
+      return;
+    }
+
+    if (project.projectType === 'mod') {
+      if (instance.loader === 'vanilla') {
+        throw new Error('Cannot install mods to vanilla instances. Please install a mod loader first (Fabric, Forge, NeoForge, or Quilt).');
+      }
+    }
+
     if (project.provider === 'modrinth') {
       await this.installModrinth(project, instance, data.settings);
       return;

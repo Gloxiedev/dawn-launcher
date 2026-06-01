@@ -23,12 +23,12 @@ export function Sidebar() {
   const setActivePage = useLauncherStore((state) => state.setActivePage);
 
   return (
-    <aside className="relative flex h-screen min-h-0 flex-col border-r border-white/10 bg-black/25 px-3 py-4 backdrop-blur-xl">
-      <div className="mb-6 flex items-center gap-3 px-1">
+    <aside className="relative flex h-full min-h-0 flex-col border-r border-white/10 bg-black/25 px-3 py-4 backdrop-blur-xl">
+      <div className="mb-6 flex min-h-0 items-center gap-3 px-1">
         <div className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-[var(--accent)] text-black shadow-glow">
           <Gamepad2 size={24} />
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 overflow-hidden">
           <p className="truncate text-sm font-black">Dawn</p>
           <p className="truncate text-xs text-zinc-500">Launcher</p>
         </div>

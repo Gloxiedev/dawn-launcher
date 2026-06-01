@@ -27,7 +27,7 @@ export function ConsolePage() {
           </Button>
         </div>
       </div>
-      <Panel className="min-h-0 flex-1 overflow-auto p-4 font-mono text-sm">
+      <Panel className="min-h-0 flex-1 overflow-y-auto p-4 font-mono text-sm">
         {visible.map((event, index) => (
           <div key={`${event.time}:${index}`} className="grid grid-cols-[86px_70px_1fr] gap-3 border-b border-white/[0.04] py-1.5">
             <span className="text-zinc-600">{new Date(event.time).toLocaleTimeString()}</span>

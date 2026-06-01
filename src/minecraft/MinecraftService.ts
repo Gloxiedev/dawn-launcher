@@ -47,13 +47,19 @@ export class MinecraftService {
         throw new Error('Select an account before launching.');
       }
 
-      this.emit(input.instanceId, 'info', 'Preparing instance');
-      await this.instances.ensureRoots(data.settings);
-
+      this.emit(input.instanceId, 'info', 'Validating instance');
+      
       if (instance.loader !== 'vanilla' && !instance.launchVersionId) {
-        this.emit(input.instanceId, 'info', `Installing ${instance.loader}`);
+        this.emit(input.instanceId, 'info', `Installing ${instance.loader} loader`);
         instance = await this.loaders.install(instance, data.settings);
       }
+
+      if (!instance.launchVersionId && instance.loader !== 'vanilla') {
+        throw new Error(`Failed to install ${instance.loader} loader. Please try again or use vanilla Minecraft.`);
+      }
+
+      await this.instances.ensureRoots(data.settings);
+      this.emit(input.instanceId, 'info', 'Preparing instance');
 
       const gameVersion = await this.versions.resolveAlias(instance.gameVersion);
       const versionId = instance.launchVersionId || gameVersion;

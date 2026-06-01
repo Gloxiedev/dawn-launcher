@@ -23,7 +23,7 @@ export function HomePage() {
 
   return (
     <div className="grid h-full min-h-0 grid-cols-1 gap-5 overflow-hidden xl:grid-cols-[minmax(0,1fr)_360px]">
-      <section className="min-h-0 min-w-0 overflow-auto pr-1">
+      <section className="min-h-0 min-w-0 overflow-y-auto pr-1">
         <Panel className="relative min-h-[370px] overflow-hidden p-7">
           <div className="absolute inset-0 opacity-60 [background:radial-gradient(circle_at_70%_30%,rgba(255,122,26,0.28),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.08),transparent_50%)]" />
           <motion.div
@@ -100,7 +100,7 @@ export function HomePage() {
         </div>
       </section>
 
-      <aside className="min-h-0 overflow-auto pr-1">
+      <aside className="min-h-0 overflow-y-auto pr-1">
         <div className="grid gap-5">
           <DownloadWidget />
           <Panel className="p-5">

@@ -187,8 +187,9 @@ export class AccountService {
 
     const uhs = xsts.DisplayClaims.xui[0]?.uhs;
     if (!uhs) {
-      throw new Error('Xbox Live did not return a user hash for this account.');
+      throw new Error('Xbox Live did not return a user hash for this account. The account may not have Xbox Live enabled.');
     }
+
     const minecraft = await this.postJson<{ access_token: string; expires_in: number }>(
       'https://api.minecraftservices.com/authentication/login_with_xbox',
       {
@@ -196,11 +197,15 @@ export class AccountService {
       }
     );
 
+    if (!minecraft.access_token) {
+      throw new Error('Failed to obtain Minecraft access token. Please try signing in again.');
+    }
+
     const entitlements = await fetch('https://api.minecraftservices.com/entitlements/mcstore', {
       headers: { Authorization: `Bearer ${minecraft.access_token}` }
     });
     if (!entitlements.ok) {
-      throw new Error('Unable to verify Minecraft Java entitlement for this Microsoft account.');
+      throw new Error('This Microsoft account does not have Minecraft Java Edition. Ensure you own the game.');
     }
 
     const profileResponse = await fetch('https://api.minecraftservices.com/minecraft/profile', {
@@ -208,10 +213,14 @@ export class AccountService {
     });
 
     if (!profileResponse.ok) {
-      throw new Error('This Microsoft account does not have a Minecraft Java profile.');
+      throw new Error('This Microsoft account does not have a Minecraft Java profile. You may need to create one first.');
     }
 
     const profile = (await profileResponse.json()) as { id: string; name: string };
+    if (!profile.id || !profile.name) {
+      throw new Error('Invalid Minecraft profile data received. Please try signing in again.');
+    }
+
     return {
       id: randomUUID(),
       kind: 'microsoft',
@@ -226,20 +235,39 @@ export class AccountService {
   }
 
   private async postJson<T>(url: string, body: unknown): Promise<T> {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json'
-      },
-      body: JSON.stringify(body)
-    });
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json'
+        },
+        body: JSON.stringify(body)
+      });
 
-    if (!response.ok) {
-      throw new Error(`Authentication request failed (${response.status}).`);
+      if (!response.ok) {
+        const text = await response.text();
+        let errorMsg = `Authentication request failed (${response.status}).`;
+        try {
+          const error = JSON.parse(text);
+          if (error.XErr) {
+            errorMsg = `Xbox error: ${error.XErr}. Check your Microsoft account status.`;
+          } else if (error.error) {
+            errorMsg = error.error_description || error.error;
+          }
+        } catch {
+          errorMsg = text || errorMsg;
+        }
+        throw new Error(errorMsg);
+      }
+
+      return (await response.json()) as T;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error(`Network error during authentication: ${String(error)}`);
     }
-
-    return (await response.json()) as T;
   }
 
   private offlineUuid(username: string): string {

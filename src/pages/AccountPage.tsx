@@ -41,7 +41,7 @@ export function AccountPage() {
 
   return (
     <div className="grid h-full min-h-0 grid-cols-1 gap-5 overflow-hidden xl:grid-cols-[minmax(0,1fr)_420px]">
-      <section className="min-h-0 min-w-0 overflow-auto pr-1">
+      <section className="min-h-0 min-w-0 overflow-y-auto pr-1">
         <div className="mb-4">
           <h2 className="text-3xl font-black tracking-normal">Accounts</h2>
           <p className="mt-1 text-sm text-zinc-400">Microsoft sessions and offline profiles.</p>
@@ -72,7 +72,7 @@ export function AccountPage() {
           {!accounts.length && <Panel className="p-8 text-center text-sm text-zinc-500">No accounts added.</Panel>}
         </div>
       </section>
-      <aside className="grid min-h-0 content-start gap-5 overflow-auto pr-1">
+      <aside className="grid min-h-0 content-start gap-5 overflow-y-auto pr-1">
         <Panel className="p-5">
           <div className="flex items-center gap-2">
             <LogIn size={18} className="text-orange-200" />

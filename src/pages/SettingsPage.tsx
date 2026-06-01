@@ -32,7 +32,7 @@ export function SettingsPage() {
 
   return (
     <div className="grid h-full min-h-0 grid-cols-1 gap-5 overflow-hidden xl:grid-cols-[minmax(0,1fr)_380px]">
-      <section className="min-h-0 min-w-0 overflow-auto pr-1">
+      <section className="min-h-0 min-w-0 overflow-y-auto pr-1">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-3xl font-black tracking-normal">Settings</h2>
@@ -134,7 +134,7 @@ export function SettingsPage() {
         </div>
       </section>
 
-      <aside className="grid min-h-0 content-start gap-5 overflow-auto pr-1">
+      <aside className="grid min-h-0 content-start gap-5 overflow-y-auto pr-1">
         <Panel className="p-5">
           <div className="flex items-center justify-between">
             <h3 className="font-black">Java</h3>

@@ -10,29 +10,41 @@ export function GalleryPage() {
   const selectedInstanceId = useLauncherStore((state) => state.selectedInstanceId);
   const selected = instances.find((instance) => instance.id === selectedInstanceId);
   const [screenshots, setScreenshots] = useState<ScreenshotItem[]>([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const refresh = async () => {
-    if (!selectedInstanceId) {
+    if (!selectedInstanceId || isRefreshing) {
       setScreenshots([]);
       return;
     }
-    setScreenshots(await window.dawn.gallery.list(selectedInstanceId));
+    setIsRefreshing(true);
+    try {
+      setScreenshots(await window.dawn.gallery.list(selectedInstanceId));
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   useEffect(() => {
     void refresh();
+    
+    const interval = setInterval(() => {
+      void refresh();
+    }, 3000);
+
+    return () => clearInterval(interval);
   }, [selectedInstanceId]);
 
   return (
-    <div className="h-full min-h-0 overflow-auto pr-1">
+    <div className="h-full min-h-0 overflow-y-auto pr-1">
       <div className="mb-4 flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-black tracking-normal">Gallery</h2>
           <p className="mt-1 text-sm text-zinc-400">{selected?.name || 'Select an instance'}</p>
         </div>
         <div className="flex gap-2">
-          <Button icon={<RotateCw size={16} />} onClick={() => void refresh()}>
-            Refresh
+          <Button icon={<RotateCw size={16} />} onClick={() => void refresh()} disabled={isRefreshing}>
+            {isRefreshing ? 'Refreshing...' : 'Refresh'}
           </Button>
           <Button tone="primary" icon={<FolderOpen size={16} />} onClick={() => selected && window.dawn.gallery.openFolder(selected.id)}>
             Screenshots

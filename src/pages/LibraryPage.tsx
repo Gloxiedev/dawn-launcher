@@ -48,7 +48,7 @@ export function LibraryPage({ kind, title }: LibraryPageProps) {
 
   return (
     <div className="grid h-full min-h-0 grid-cols-1 gap-5 overflow-hidden xl:grid-cols-[minmax(0,1fr)_420px]">
-      <section className="min-h-0 min-w-0 overflow-auto pr-1">
+      <section className="min-h-0 min-w-0 overflow-y-auto pr-1">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
           <div>
             <h2 className="text-3xl font-black tracking-normal">{title}</h2>
@@ -82,7 +82,7 @@ export function LibraryPage({ kind, title }: LibraryPageProps) {
           </Panel>
         )}
       </section>
-      <aside className="min-h-0 overflow-auto">
+      <aside className="min-h-0 overflow-y-auto">
         <ContentTable instanceId={selectedInstanceId} kind={kind} query={query} />
       </aside>
     </div>

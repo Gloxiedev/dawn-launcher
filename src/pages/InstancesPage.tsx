@@ -21,7 +21,7 @@ export function InstancesPage() {
 
   return (
     <div className="grid h-full min-h-0 grid-cols-1 gap-5 overflow-hidden xl:grid-cols-[minmax(0,1fr)_360px]">
-      <section className="min-h-0 min-w-0 overflow-auto pr-1">
+      <section className="min-h-0 min-w-0 overflow-y-auto pr-1">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
           <div>
             <h2 className="text-3xl font-black tracking-normal">Instances</h2>
@@ -43,7 +43,7 @@ export function InstancesPage() {
         </div>
       </section>
 
-      <aside className="min-h-0 overflow-auto">
+      <aside className="min-h-0 overflow-y-auto">
         <Panel className="p-5">
           <h3 className="font-black">Instance Settings</h3>
           {selected ? (
