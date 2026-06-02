@@ -91,6 +91,7 @@ export interface LaunchPlanInput {
   java: JavaRuntime;
   settings: LauncherSettings;
   onStage?: (message: string) => void;
+  signal?: AbortSignal;
 }
 
 export interface LaunchPlan {

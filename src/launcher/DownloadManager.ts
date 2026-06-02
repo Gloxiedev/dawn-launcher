@@ -37,13 +37,18 @@ export class DownloadManager extends EventEmitter {
     return [...this.jobs.values()].map((job) => ({ ...job }));
   }
 
-  async download(job: DownloadJob): Promise<string> {
+  async download(job: DownloadJob, signal?: AbortSignal): Promise<string> {
+    this.throwIfAborted(signal);
     let lastError: unknown;
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      this.throwIfAborted(signal);
       try {
-        return await this.downloadOnce(job);
+        return await this.downloadOnce(job, signal);
       } catch (error) {
+        if (this.isAbortError(error)) {
+          throw error;
+        }
         lastError = error;
         await unlink(`${job.targetPath}.download`).catch(() => undefined);
         await unlink(job.targetPath).catch(() => undefined);
@@ -67,8 +72,10 @@ export class DownloadManager extends EventEmitter {
   async downloadMany(
     jobs: DownloadJob[],
     maxParallel = DEFAULT_PARALLEL_DOWNLOADS,
-    onProgress?: (completed: number, total: number) => void
+    onProgress?: (completed: number, total: number) => void,
+    signal?: AbortSignal
   ): Promise<void> {
+    this.throwIfAborted(signal);
     const seen = new Set<string>();
     const queue = jobs.filter((job) => {
       const key = job.targetPath.toLowerCase();
@@ -89,11 +96,12 @@ export class DownloadManager extends EventEmitter {
     let completed = 0;
     const worker = async () => {
       for (;;) {
+        this.throwIfAborted(signal);
         const index = nextIndex++;
         if (index >= queue.length) {
           return;
         }
-        await this.download(queue[index]);
+        await this.download(queue[index], signal);
         completed += 1;
         onProgress?.(completed, queue.length);
       }
@@ -103,8 +111,9 @@ export class DownloadManager extends EventEmitter {
     console.log(`[DownloadManager] Finished downloading all ${queue.length} files`);
   }
 
-  private async downloadOnce(job: DownloadJob): Promise<string> {
-    if (await this.isExistingFileValid(job)) {
+  private async downloadOnce(job: DownloadJob, signal?: AbortSignal): Promise<string> {
+    this.throwIfAborted(signal);
+    if (await this.isExistingFileValid(job, signal)) {
       this.emitProgress({
         id: job.id,
         label: job.label,
@@ -136,6 +145,7 @@ export class DownloadManager extends EventEmitter {
     });
 
     const controller = new AbortController();
+    const detachParentAbort = this.linkAbortSignal(signal, controller);
     const timeout = setTimeout(() => controller.abort(new Error(`Network timeout after 120s: ${job.url}`)), 120_000);
 
     let response: Response;
@@ -150,6 +160,7 @@ export class DownloadManager extends EventEmitter {
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to download ${job.label}: ${message}`);
     } finally {
+      detachParentAbort();
       clearTimeout(timeout);
     }
 
@@ -171,6 +182,7 @@ export class DownloadManager extends EventEmitter {
         if (done) {
           break;
         }
+        this.throwIfAborted(signal);
 
         const buffer = Buffer.from(value);
         hash.update(buffer);
@@ -244,8 +256,9 @@ export class DownloadManager extends EventEmitter {
     return job.targetPath;
   }
 
-  private async isExistingFileValid(job: DownloadJob): Promise<boolean> {
+  private async isExistingFileValid(job: DownloadJob, signal?: AbortSignal): Promise<boolean> {
     try {
+      this.throwIfAborted(signal);
       const file = await stat(job.targetPath);
       if (file.size === 0) {
         await unlink(job.targetPath).catch(() => undefined);
@@ -260,7 +273,7 @@ export class DownloadManager extends EventEmitter {
         return true;
       }
 
-      const hash = await this.sha1File(job.targetPath);
+      const hash = await this.sha1File(job.targetPath, signal);
       if (hash !== job.sha1) {
         await unlink(job.targetPath).catch(() => undefined);
         return false;
@@ -271,12 +284,42 @@ export class DownloadManager extends EventEmitter {
     }
   }
 
-  private async sha1File(path: string): Promise<string> {
+  private async sha1File(path: string, signal?: AbortSignal): Promise<string> {
     const hash = createHash('sha1');
     const stream = createReadStream(path);
+    if (signal) {
+      signal.addEventListener('abort', () => stream.destroy(new Error('Aborted')), { once: true });
+    }
     stream.on('data', (chunk) => hash.update(chunk));
     await finished(stream);
+    this.throwIfAborted(signal);
     return hash.digest('hex');
+  }
+
+  private throwIfAborted(signal?: AbortSignal): void {
+    if (signal?.aborted) {
+      const reason = signal.reason instanceof Error ? signal.reason.message : 'Operation aborted';
+      const error = new Error(reason);
+      error.name = 'AbortError';
+      throw error;
+    }
+  }
+
+  private isAbortError(error: unknown): boolean {
+    return error instanceof Error && (error.name === 'AbortError' || /aborted/i.test(error.message));
+  }
+
+  private linkAbortSignal(parent: AbortSignal | undefined, controller: AbortController): () => void {
+    if (!parent) {
+      return () => undefined;
+    }
+    if (parent.aborted) {
+      controller.abort(parent.reason);
+      return () => undefined;
+    }
+    const onAbort = () => controller.abort(parent.reason);
+    parent.addEventListener('abort', onAbort, { once: true });
+    return () => parent.removeEventListener('abort', onAbort);
   }
 
   private fail(job: DownloadJob, error: string): void {

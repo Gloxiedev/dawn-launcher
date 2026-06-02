@@ -15,6 +15,7 @@ import { VersionService } from './VersionService';
 const execFileAsync = promisify(execFile);
 
 const MAX_HISTORY_ENTRIES = 500;
+const CREATE_LAUNCH_PLAN_TIMEOUT_MS = 15 * 60_000;
 
 interface InstanceSession {
   child?: ChildProcess;
@@ -184,22 +185,33 @@ export class MinecraftService {
       this.emit(input.instanceId, 'debug', 'Creating launch plan (downloading game files)...');
 
       let plan: any;
+      const launchPlanAbort = new AbortController();
       try {
         console.log(`[MinecraftService] Starting createLaunchPlan for version ${versionId}`);
-        plan = await stage('Create Launch Plan', async () =>
-          this.withTimeout(
-            this.versions.createLaunchPlan({
+        plan = await stage('Create Launch Plan', async () => {
+          if (abort.signal.aborted) {
+            launchPlanAbort.abort(new Error('Launch cancelled'));
+          }
+          const detachAbortLink = this.linkAbortSignal(abort.signal, launchPlanAbort);
+          try {
+            return await this.withTimeout(
+              this.versions.createLaunchPlan({
               versionId,
               instance,
               account: this.normalizeAccount(account),
               java: runtime,
               settings: data.settings,
-              onStage: (message) => this.emit(input.instanceId, 'info', message)
-            }),
-            5 * 60_000,
-            `Launch plan timed out after 5 minutes (version: ${versionId})`
-          )
-        );
+                onStage: (message) => this.emit(input.instanceId, 'info', message),
+                signal: launchPlanAbort.signal
+              }),
+              CREATE_LAUNCH_PLAN_TIMEOUT_MS,
+              `Launch plan timed out after ${Math.round(CREATE_LAUNCH_PLAN_TIMEOUT_MS / 60000)} minutes (version: ${versionId})`,
+              () => launchPlanAbort.abort(new Error(`Launch plan timed out after ${Math.round(CREATE_LAUNCH_PLAN_TIMEOUT_MS / 60000)} minutes`))
+            );
+          } finally {
+            detachAbortLink();
+          }
+        });
         console.log(`[MinecraftService] Successfully created launch plan`);
       } catch (error) {
         console.error(`[MinecraftService] createLaunchPlan failed:`, error);
@@ -445,18 +457,31 @@ export class MinecraftService {
     }
   }
 
-  private async withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  private async withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string, onTimeout?: () => void): Promise<T> {
     let timeout: NodeJS.Timeout | undefined;
     try {
       return await Promise.race([
         promise,
         new Promise<T>((_resolve, reject) => {
-          timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+          timeout = setTimeout(() => {
+            onTimeout?.();
+            reject(new Error(message));
+          }, timeoutMs);
         })
       ]);
     } finally {
       if (timeout) clearTimeout(timeout);
     }
+  }
+
+  private linkAbortSignal(parent: AbortSignal, child: AbortController): () => void {
+    if (parent.aborted) {
+      child.abort(parent.reason);
+      return () => undefined;
+    }
+    const onAbort = () => child.abort(parent.reason);
+    parent.addEventListener('abort', onAbort, { once: true });
+    return () => parent.removeEventListener('abort', onAbort);
   }
 
   private setState(instanceId: string, state: ProcessState): void {

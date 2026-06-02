@@ -46,10 +46,12 @@ export class VersionService {
   }
 
   async createLaunchPlan(input: LaunchPlanInput): Promise<LaunchPlan> {
+    this.throwIfAborted(input.signal);
     input.onStage?.('Resolving version metadata');
     const version = await this.resolveVersion(input.versionId, input.settings);
+    this.throwIfAborted(input.signal);
     input.onStage?.('Verifying assets and libraries');
-    await this.downloadVersionFiles(version, input.settings, input.onStage);
+    await this.downloadVersionFiles(version, input.settings, input.onStage, input.signal);
 
     const assetsRoot = this.paths.assetsRoot(input.settings);
     const librariesRoot = this.paths.librariesRoot(input.settings);
@@ -207,8 +209,10 @@ export class VersionService {
   private async downloadVersionFiles(
     version: MojangVersion,
     settings: LauncherSettings,
-    onStage?: (message: string) => void
+    onStage?: (message: string) => void,
+    signal?: AbortSignal
   ): Promise<void> {
+    this.throwIfAborted(signal);
     const jobs: DownloadJob[] = [];
     const versionRoot = join(this.paths.versionsRoot(settings), version.id);
     console.log(`[VersionService] Starting downloadVersionFiles for ${version.id}`);
@@ -238,15 +242,21 @@ export class VersionService {
     onStage?.(`Verifying libraries: 0/${jobs.length}`);
     await this.downloads.downloadMany(jobs, settings.maxParallelDownloads, (completed, total) => {
       onStage?.(`Verifying libraries: ${completed}/${total}`);
-    });
+    }, signal);
     console.log(`[VersionService] Finished downloading files for version ${version.id}`);
 
     if (version.assetIndex) {
-      await this.downloadAssets(version, settings, onStage);
+      await this.downloadAssets(version, settings, onStage, signal);
     }
   }
 
-  private async downloadAssets(version: MojangVersion, settings: LauncherSettings, onStage?: (message: string) => void): Promise<void> {
+  private async downloadAssets(
+    version: MojangVersion,
+    settings: LauncherSettings,
+    onStage?: (message: string) => void,
+    signal?: AbortSignal
+  ): Promise<void> {
+    this.throwIfAborted(signal);
     if (!version.assetIndex) {
       return;
     }
@@ -261,7 +271,7 @@ export class VersionService {
         targetPath: indexPath,
         sha1: version.assetIndex.sha1,
         size: version.assetIndex.size
-      });
+      }, signal);
     }
     const index = JSON.parse(await readFile(indexPath, 'utf8')) as AssetIndex;
     const jobs = Object.entries(index.objects).map(([name, object]) => {
@@ -280,7 +290,7 @@ export class VersionService {
     onStage?.(`Downloading assets: 0% (0/${jobs.length})`);
     await this.downloads.downloadMany(jobs, settings.maxParallelDownloads, (completed, total) => {
       onStage?.(`Downloading assets: ${Math.round((completed / total) * 100)}% (${completed}/${total})`);
-    });
+    }, signal);
     console.log(`[VersionService] Finished downloading assets for ${version.assetIndex.id}`);
   }
 
@@ -452,6 +462,15 @@ export class VersionService {
       return (await response.json()) as T;
     } finally {
       clearTimeout(timeout);
+    }
+  }
+
+  private throwIfAborted(signal?: AbortSignal): void {
+    if (signal?.aborted) {
+      const reason = signal.reason instanceof Error ? signal.reason.message : 'Operation aborted';
+      const error = new Error(reason);
+      error.name = 'AbortError';
+      throw error;
     }
   }
 }
