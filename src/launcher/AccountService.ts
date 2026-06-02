@@ -84,7 +84,7 @@ export class AccountService {
     const { settings } = await this.database.read();
     const clientId = (settings.microsoftClientId || process.env.DAWN_MICROSOFT_CLIENT_ID || '').trim();
     if (!clientId) {
-      throw new Error('Add a Microsoft public client ID in Settings before signing in.');
+      throw new Error('Microsoft client ID missing. Use Offline account or set Credentials.');
     }
 
     const body = new URLSearchParams({
@@ -194,7 +194,7 @@ export class AccountService {
     const { settings } = await this.database.read();
     const clientId = (settings.microsoftClientId || process.env.DAWN_MICROSOFT_CLIENT_ID || '').trim();
     if (!clientId) {
-      throw new Error('Microsoft client ID is missing. Add it in Settings.');
+      throw new Error('Microsoft client ID missing. Use Offline account or set Credentials.');
     }
 
     const response = await fetch('https://login.microsoftonline.com/consumers/oauth2/v2.0/token', {

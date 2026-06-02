@@ -12,6 +12,11 @@ const MANIFEST_URL = 'https://piston-meta.mojang.com/mc/game/version_manifest_v2
 const MANIFEST_CACHE_TTL_MS = 1000 * 60 * 60 * 6;
 const VERSION_METADATA_TTL_MS = 1000 * 60 * 60 * 24;
 const ASSET_INDEX_TTL_MS = 1000 * 60 * 60 * 24;
+const ASSET_MIRROR_BASES = [
+  'https://resources.download.minecraft.net',
+  'https://bmclapi2.bangbang93.com/assets',
+  'https://download.mcbbs.net/assets'
+];
 
 export class VersionService {
   private manifest?: VersionManifest;
@@ -240,8 +245,12 @@ export class VersionService {
 
     console.log(`[VersionService] Downloading ${jobs.length} files for version ${version.id}`);
     onStage?.(`Verifying libraries: 0/${jobs.length}`);
+    let lastLibraryReported = 0;
     await this.downloads.downloadMany(jobs, settings.maxParallelDownloads, (completed, total) => {
-      onStage?.(`Verifying libraries: ${completed}/${total}`);
+      if (completed === total || completed - lastLibraryReported >= 10) {
+        lastLibraryReported = completed;
+        onStage?.(`Verifying libraries: ${completed}/${total}`);
+      }
     }, signal);
     console.log(`[VersionService] Finished downloading files for version ${version.id}`);
 
@@ -276,10 +285,13 @@ export class VersionService {
     const index = JSON.parse(await readFile(indexPath, 'utf8')) as AssetIndex;
     const jobs = Object.entries(index.objects).map(([name, object]) => {
       const prefix = object.hash.slice(0, 2);
+      const primary = `${ASSET_MIRROR_BASES[0]}/${prefix}/${object.hash}`;
+      const fallbacks = ASSET_MIRROR_BASES.slice(1).map((base) => `${base}/${prefix}/${object.hash}`);
       return {
         id: `asset:${object.hash}`,
         label: name,
-        url: `https://resources.download.minecraft.net/${prefix}/${object.hash}`,
+        url: primary,
+        fallbackUrls: fallbacks,
         targetPath: join(this.paths.assetsRoot(settings), 'objects', prefix, object.hash),
         sha1: object.hash,
         size: object.size
@@ -288,8 +300,15 @@ export class VersionService {
 
     console.log(`[VersionService] Downloading ${jobs.length} assets for ${version.assetIndex.id}`);
     onStage?.(`Downloading assets: 0% (0/${jobs.length})`);
+    let lastAssetReported = 0;
+    let lastPercentReported = -1;
     await this.downloads.downloadMany(jobs, settings.maxParallelDownloads, (completed, total) => {
-      onStage?.(`Downloading assets: ${Math.round((completed / total) * 100)}% (${completed}/${total})`);
+      const percent = Math.round((completed / total) * 100);
+      if (completed === total || completed - lastAssetReported >= 25 || percent > lastPercentReported) {
+        lastAssetReported = completed;
+        lastPercentReported = percent;
+        onStage?.(`Downloading assets: ${percent}% (${completed}/${total})`);
+      }
     }, signal);
     console.log(`[VersionService] Finished downloading assets for ${version.assetIndex.id}`);
   }

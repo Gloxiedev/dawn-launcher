@@ -13,6 +13,7 @@ export interface DownloadJob {
   id: string;
   label: string;
   url: string;
+  fallbackUrls?: string[];
   targetPath: string;
   sha1?: string;
   size?: number;
@@ -21,6 +22,9 @@ export interface DownloadJob {
 const MAX_RETRIES = 4;
 const BASE_BACKOFF_MS = 750;
 const DEFAULT_PARALLEL_DOWNLOADS = 6;
+const DOWNLOAD_HARD_TIMEOUT_MS = 5 * 60_000;
+const DOWNLOAD_IDLE_TIMEOUT_MS = 30_000;
+const DOWNLOAD_JOB_TIMEOUT_MS = 90_000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -40,27 +44,31 @@ export class DownloadManager extends EventEmitter {
   async download(job: DownloadJob, signal?: AbortSignal): Promise<string> {
     this.throwIfAborted(signal);
     let lastError: unknown;
+    const sources = [job.url, ...(job.fallbackUrls ?? [])];
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       this.throwIfAborted(signal);
-      try {
-        return await this.downloadOnce(job, signal);
-      } catch (error) {
-        if (this.isAbortError(error)) {
-          throw error;
+      for (const sourceUrl of sources) {
+        this.throwIfAborted(signal);
+        try {
+          return await this.downloadOnce(job, sourceUrl, signal);
+        } catch (error) {
+          if (this.isAbortError(error)) {
+            throw error;
+          }
+          lastError = error;
         }
-        lastError = error;
-        await unlink(`${job.targetPath}.download`).catch(() => undefined);
-        await unlink(job.targetPath).catch(() => undefined);
+      }
+      await unlink(`${job.targetPath}.download`).catch(() => undefined);
+      await unlink(job.targetPath).catch(() => undefined);
 
-        if (attempt < MAX_RETRIES - 1) {
-          const delay = BASE_BACKOFF_MS * 2 ** attempt;
-          await this.logger?.warn('download', `Retrying ${job.label} (attempt ${attempt + 2}/${MAX_RETRIES})`, {
-            delay,
-            error: error instanceof Error ? error.message : String(error)
-          });
-          await sleep(delay);
-        }
+      if (attempt < MAX_RETRIES - 1) {
+        const delay = BASE_BACKOFF_MS * 2 ** attempt;
+        await this.logger?.warn('download', `Retrying ${job.label} (attempt ${attempt + 2}/${MAX_RETRIES})`, {
+          delay,
+          error: lastError instanceof Error ? lastError.message : String(lastError)
+        });
+        await sleep(delay);
       }
     }
 
@@ -101,7 +109,7 @@ export class DownloadManager extends EventEmitter {
         if (index >= queue.length) {
           return;
         }
-        await this.download(queue[index], signal);
+        await this.downloadWithJobTimeout(queue[index], DOWNLOAD_JOB_TIMEOUT_MS, signal);
         completed += 1;
         onProgress?.(completed, queue.length);
       }
@@ -111,7 +119,7 @@ export class DownloadManager extends EventEmitter {
     console.log(`[DownloadManager] Finished downloading all ${queue.length} files`);
   }
 
-  private async downloadOnce(job: DownloadJob, signal?: AbortSignal): Promise<string> {
+  private async downloadOnce(job: DownloadJob, sourceUrl: string, signal?: AbortSignal): Promise<string> {
     this.throwIfAborted(signal);
     if (await this.isExistingFileValid(job, signal)) {
       this.emitProgress({
@@ -146,11 +154,23 @@ export class DownloadManager extends EventEmitter {
 
     const controller = new AbortController();
     const detachParentAbort = this.linkAbortSignal(signal, controller);
-    const timeout = setTimeout(() => controller.abort(new Error(`Network timeout after 120s: ${job.url}`)), 120_000);
+    const hardTimeout = setTimeout(
+      () => controller.abort(new Error(`Download hard timeout after ${Math.round(DOWNLOAD_HARD_TIMEOUT_MS / 1000)}s: ${job.url}`)),
+      DOWNLOAD_HARD_TIMEOUT_MS
+    );
+    let idleTimeout: NodeJS.Timeout | undefined;
+    const refreshIdleTimeout = () => {
+      if (idleTimeout) clearTimeout(idleTimeout);
+      idleTimeout = setTimeout(
+        () => controller.abort(new Error(`Download stalled for ${Math.round(DOWNLOAD_IDLE_TIMEOUT_MS / 1000)}s: ${job.url}`)),
+        DOWNLOAD_IDLE_TIMEOUT_MS
+      );
+    };
+    refreshIdleTimeout();
 
     let response: Response;
     try {
-      response = await fetch(job.url, {
+      response = await fetch(sourceUrl, {
         signal: controller.signal,
         headers: {
           'User-Agent': 'DawnLauncher/0.1 (+https://dawn.local)'
@@ -158,14 +178,11 @@ export class DownloadManager extends EventEmitter {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to download ${job.label}: ${message}`);
-    } finally {
-      detachParentAbort();
-      clearTimeout(timeout);
+      throw new Error(`Failed to download ${job.label} from ${sourceUrl}: ${message}`);
     }
 
     if (!response.ok || !response.body) {
-      throw new Error(`Download failed (${response.status}) for ${job.label}`);
+      throw new Error(`Download failed (${response.status}) for ${job.label} from ${sourceUrl}`);
     }
 
     const totalBytes = Number(response.headers.get('content-length') || job.size || 0) || undefined;
@@ -183,6 +200,7 @@ export class DownloadManager extends EventEmitter {
           break;
         }
         this.throwIfAborted(signal);
+        refreshIdleTimeout();
 
         const buffer = Buffer.from(value);
         hash.update(buffer);
@@ -212,6 +230,10 @@ export class DownloadManager extends EventEmitter {
       writer.destroy();
       await unlink(tempPath).catch(() => undefined);
       throw error;
+    } finally {
+      detachParentAbort();
+      clearTimeout(hardTimeout);
+      if (idleTimeout) clearTimeout(idleTimeout);
     }
 
     await finished(writer);
@@ -320,6 +342,26 @@ export class DownloadManager extends EventEmitter {
     const onAbort = () => controller.abort(parent.reason);
     parent.addEventListener('abort', onAbort, { once: true });
     return () => parent.removeEventListener('abort', onAbort);
+  }
+
+  private async downloadWithJobTimeout(job: DownloadJob, timeoutMs: number, signal?: AbortSignal): Promise<string> {
+    const controller = new AbortController();
+    const detach = this.linkAbortSignal(signal, controller);
+    let timeout: NodeJS.Timeout | undefined;
+    try {
+      return await Promise.race([
+        this.download(job, controller.signal),
+        new Promise<string>((_resolve, reject) => {
+          timeout = setTimeout(() => {
+            controller.abort(new Error(`Asset download job timed out after ${Math.round(timeoutMs / 1000)}s`));
+            reject(new Error(`Asset download timed out: ${job.label}`));
+          }, timeoutMs);
+        })
+      ]);
+    } finally {
+      detach();
+      if (timeout) clearTimeout(timeout);
+    }
   }
 
   private fail(job: DownloadJob, error: string): void {

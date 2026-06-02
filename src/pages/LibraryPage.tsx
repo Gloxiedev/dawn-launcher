@@ -8,9 +8,13 @@ import { Panel } from '@/components/Panel';
 import type { ContentKind, MarketplaceProject } from '@/types/launcher';
 import { useLauncherStore } from '@/store/useLauncherStore';
 
+// @ts-ignore
 import modsBg from '../../backgrounds/mod.png';
+// @ts-ignore
 import shaderBg from '../../backgrounds/shader.png';
+// @ts-ignore
 import modpackBg from '../../backgrounds/mod.png';
+// @ts-ignore
 import resourceBg from '../../backgrounds/background2.png';
 
 const sectionBg: Record<ContentKind, string> = {

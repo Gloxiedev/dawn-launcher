@@ -6,11 +6,13 @@ import { Panel } from '@/components/Panel';
 import type { DeviceCodeStart } from '@/types/launcher';
 import { useLauncherStore } from '@/store/useLauncherStore';
 
+// @ts-ignore
 import accountsBg from '../../backgrounds/accounts.png';
 
 export function AccountPage() {
   const accounts = useLauncherStore((state) => state.accounts);
   const settings = useLauncherStore((state) => state.settings);
+  const setActivePage = useLauncherStore((state) => state.setActivePage);
   const selectedAccountId = useLauncherStore((state) => state.selectedAccountId);
   const setSelectedAccount = useLauncherStore((state) => state.setSelectedAccount);
   const addOfflineAccount = useLauncherStore((state) => state.addOfflineAccount);
@@ -25,6 +27,7 @@ export function AccountPage() {
   const [authError, setAuthError] = useState('');
   const [polling, setPolling] = useState(false);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const hasMicrosoftClientId = Boolean(settings?.microsoftClientId?.trim());
 
   const startLogin = async () => {
     setAuthError('');
@@ -97,13 +100,21 @@ export function AccountPage() {
           <p className="text-xs text-muted leading-relaxed">
             Sign in with your Microsoft account to play the official Minecraft version. Requires a valid Minecraft Java Edition license.
           </p>
-          <Button icon={<KeyRound size={16} />} onClick={() => void startLogin()} disabled={polling}>
+          <Button icon={<KeyRound size={16} />} onClick={() => void startLogin()} disabled={polling || !hasMicrosoftClientId}>
             {polling ? 'Waiting for approval…' : 'Start Microsoft Login'}
           </Button>
-          {!settings?.microsoftClientId && (
-            <p className="rounded-lg border border-yellow-400/20 bg-yellow-400/10 p-3 text-xs text-yellow-100">
-              Add a Microsoft public client ID in Settings → Credentials to enable Microsoft login.
-            </p>
+          {!hasMicrosoftClientId && (
+            <div className="rounded-lg border border-yellow-400/30 bg-yellow-400/10 p-3">
+              <p className="text-sm font-semibold text-yellow-100">
+                Microsoft client ID missing.
+              </p>
+              <p className="mt-1 text-xs text-yellow-100/90">
+                Add a Microsoft public client ID in Settings → Credentials to enable Microsoft login.
+              </p>
+              <Button className="mt-3 w-full" tone="secondary" onClick={() => setActivePage('settings')}>
+                Open Settings
+              </Button>
+            </div>
           )}
           {deviceStart && (
             <div className="rounded-lg border border-white/10 bg-black/30 p-4 text-sm text-zinc-300">

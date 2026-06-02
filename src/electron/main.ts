@@ -170,7 +170,26 @@ function registerIpc(): void {
   ipcMain.handle('minecraft:listVersionCatalog', () => minecraftService.listVersionCatalog());
   ipcMain.handle('minecraft:scanJava', () => minecraftService.scanJava());
   ipcMain.handle('minecraft:installLoader', (_event, instanceId: string) => minecraftService.installLoader(instanceId));
-  ipcMain.handle('minecraft:launch', (_event, input) => minecraftService.launch(input));
+  ipcMain.handle('minecraft:launch', async (_event, input) => {
+    const timeoutPromise = new Promise((_resolve, reject) => {
+      setTimeout(() => {
+        reject(new Error('Launch request timed out after 15 minutes'));
+      }, 900000);
+    });
+
+    try {
+      const result = await Promise.race([
+        minecraftService.launch(input),
+        timeoutPromise
+      ]) as any;
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('[IPC] minecraft:launch error:', message);
+      logger.error('launch', `IPC minecraft:launch failed: ${message}`, { stack: error instanceof Error ? error.stack : '' });
+      throw error;
+    }
+  });
   ipcMain.handle('minecraft:stop', (_event, instanceId: string) => minecraftService.stop(instanceId));
   ipcMain.handle('minecraft:getProcessStates', () => minecraftService.getProcessStates());
 

@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { BarChart3, Clock, Play, Plus, Star, Timer, Trophy, User, Zap } from 'lucide-react';
+import { BarChart3, Clock, Cpu, Play, Plus, Star, Timer, Trophy, Zap } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useMemo } from 'react';
 import { Button } from '@/components/Button';
@@ -9,7 +9,9 @@ import { Panel } from '@/components/Panel';
 import { useLauncherStore } from '@/store/useLauncherStore';
 import { filterInstances } from '@/utils/instanceSearch';
 
+// @ts-ignore
 import bg1 from '../../backgrounds/background1.png';
+// @ts-ignore
 import bg2 from '../../backgrounds/background2.png';
 
 const backgrounds = [bg1, bg2, bg1];
@@ -40,6 +42,8 @@ export function HomePage() {
   const instances = useLauncherStore((state) => state.instances);
   const accounts = useLauncherStore((state) => state.accounts);
   const versionCatalog = useLauncherStore((state) => state.versionCatalog);
+  const settings = useLauncherStore((state) => state.settings);
+  const javaRuntimes = useLauncherStore((state) => state.javaRuntimes);
   const librarySearch = useLauncherStore((state) => state.librarySearch);
   const launchHistory = useLauncherStore((state) => state.launchHistory);
   const selectedInstanceId = useLauncherStore((state) => state.selectedInstanceId);
@@ -101,6 +105,8 @@ export function HomePage() {
   };
 
   const recentActivity = launchHistory.slice(0, 4);
+  const effectiveJavaPath = selectedInstance?.javaPath || settings?.javaPath || javaRuntimes[0]?.path;
+  const selectedJavaRuntime = effectiveJavaPath ? javaRuntimes.find((runtime) => runtime.path === effectiveJavaPath) : undefined;
 
   const sidebar = (
     <div className="flex flex-col gap-4">
@@ -278,10 +284,10 @@ export function HomePage() {
             icon={<Trophy size={16} />}
           />
           <StatCard
-            label="Active Account"
-            value={selectedAccount?.username ?? '—'}
-            sub={selectedAccount ? `${selectedAccount.kind} · ${selectedAccount.uuid.slice(0, 8)}…` : 'No account set'}
-            icon={<User size={16} />}
+            label="Java Version"
+            value={selectedJavaRuntime ? `Java ${selectedJavaRuntime.major}` : 'Auto-detect'}
+            sub={effectiveJavaPath ? effectiveJavaPath : 'No Java runtime detected yet'}
+            icon={<Cpu size={16} />}
           />
         </div>
 

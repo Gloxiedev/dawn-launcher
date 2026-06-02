@@ -6,6 +6,7 @@ import { Panel } from '@/components/Panel';
 import type { ScreenshotItem } from '@/types/launcher';
 import { useLauncherStore } from '@/store/useLauncherStore';
 
+// @ts-ignore
 import galleryBg from '../../backgrounds/background2.png';
 
 function ScreenshotCard({ screenshot }: { screenshot: ScreenshotItem }) {
