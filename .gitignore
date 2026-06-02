@@ -10,3 +10,4 @@ release/
 Thumbs.db
 dawn-data/
 logs/
+.local/
