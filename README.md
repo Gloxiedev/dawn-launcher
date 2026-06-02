@@ -1,290 +1,168 @@
-# Dawn Launcher
+```markdown
+# 🌅 Dawn Launcher
 
-Dawn Launcher is a desktop Minecraft Java launcher made with Electron, React, TypeScript, and TailwindCSS.
+Dawn Launcher is a modern, lightweight desktop Minecraft Java launcher built with Electron, React, TypeScript, and TailwindCSS. 
 
-It is designed to be a real launcher foundation, not only a screen mockup. It has systems for accounts, Minecraft instances, Java detection, downloads, mod loaders, Modrinth/CurseForge browsing, content management, screenshots, logs, settings, and plugins.
+More than just a visual mockup, Dawn Launcher is a fully functional foundation featuring account management, Minecraft instance isolation, automated Java detection, built-in mod loaders, Modrinth/CurseForge integration, and a dedicated plugin system.
 
-## What You Need First
+---
 
-Install these before running the project:
+## 🛑 What You Need First (Prerequisites)
 
-1. Node.js 22 or newer
-   - Download it from https://nodejs.org
-   - After installing, restart your terminal.
+Before you can run Dawn Launcher, you need to install a couple of basic tools on your computer:
 
-2. Java
-   - Minecraft 1.18 and newer usually needs Java 17 or newer.
-   - Minecraft 1.20.5 and newer usually needs Java 21 or newer.
-   - Dawn Launcher can detect Java if it is installed.
+1. **Node.js (Version 22 or newer)**
+   - Download and install it from [nodejs.org](https://nodejs.org/en/download).
+   - *Important:* After installing, always prefer to restart your computer. 
+2. **Java**
+   - Minecraft 1.18+ requires **Java 17** or newer. 
+   - Minecraft 1.20.5+ requires **Java 21** or newer.
+   - *(Note: Dawn Launcher has built-in Java detection to help you find your installed versions!)*
+   - *(Java: We reccommend using Adoptium (Eclipse Temurin) as it provides better performance. You can get it [Here](https://adoptium.net/temurin/releases)*
+3. **Internet Connection**
+   - An internet connection is required for the first launch of the game, downloading of mods and signing in via Microsoft login.
 
-3. Internet connection
-   - Needed for Minecraft files, Modrinth, CurseForge, and Microsoft login.
+---
 
-## Step By Step: Run Dawn Launcher
+## 🚀 How to Install and Run:
 
-Open a terminal in this folder:
+1. **Open the Terminal/cmd application on your computer.**
+2. **Download the Project folder and navigate to the project folder:**
+   ```bash
+   cd path/to/your/dawn-launcher-folder
 
-```bash
-C:\Users\AVANI\OneDrive\Attachments\Documents\Dawn Launcher
 ```
 
-Then run these commands:
-
+3. **Download the project dependencies:**
+*(This tells your computer to grab all the required code packages to make the app work).*
 ```bash
 npm install
+
 ```
 
-This downloads the project packages.
 
-After that, start the app:
-
+4. **Start the Launcher:**
 ```bash
 npm run dev
+
 ```
 
-The Dawn Launcher desktop window should open.
 
-## Step By Step: First Time In The App
+*The Dawn Launcher desktop window should now pop up on your screen!*
 
-1. Open Dawn Launcher with `npm run dev`.
+---
 
-2. Go to `Accounts`.
+## 🎮 First Time Setup Guide
 
-3. Add an account:
-   - Use `Offline` if you only want to test launching without Microsoft login.
-   - Use `Microsoft` if you want a real Minecraft account session.
+Once the app is open, here is how to get into the game:
 
-4. Go to `Instances`.
+1. **Add an Account:**
+* Go to the **Accounts** tab.
+* Choose **Offline** if you want to use an account that doesn't communicate with Mojang's authentication servers.
+* Choose **Microsoft** to log in via your Microsoft account with a valid Minecraft license or XBOX Game Pass for PC/Ultimate
 
-5. Click `New`.
 
-6. Choose:
-   - Minecraft version
-   - Loader: `vanilla`, `fabric`, `forge`, `neoforge`, or `quilt`
-   - RAM amount
+2. **Create an Instance (A Game Profile):**
+* Go to the **Instances** tab and click **New**.
+* Pick your desired Minecraft version.
+* Pick your Loader (Vanilla, Fabric, Forge, NeoForge, or Quilt).
+* Allocate your RAM (e.g., 4096MB).
 
-7. Go back to `Home`.
 
-8. Select your account and instance.
+3. **Launch the Game:**
+* Head back to the **Home** tab.
+* Select your Account and your new Instance.
+* Click **Play**!
 
-9. Click `Play`.
 
-The first launch can take time because Minecraft assets, libraries, and the client jar must download.
 
-## Optional: Microsoft Login
+> **⚠️ Note:** The very first time you click Play, it might take a few minutes. The launcher has to download Minecraft's core files, assets, and libraries directly from Microsoft's servers.
 
-Microsoft login needs your own Azure public client ID.
+---
 
-Add it inside the app:
+## 🔑 Optional Integrations
 
-1. Open `Settings`.
-2. Find `Microsoft client ID`.
-3. Paste your client ID.
-4. Click `Save`.
-5. Go to `Accounts`.
-6. Start Microsoft login.
+### Microsoft Login Setup
 
-You can also set it as an environment variable:
+To use real Minecraft accounts, you need to provide an Azure Public Client ID.
+
+1. Open **Settings** in the launcher.
+2. Find **Microsoft Client ID**.
+3. Paste your ID and click **Save**.
+*(Alternatively, set your environment variable: `DAWN_MICROSOFT_CLIENT_ID=your-client-id`)*
+
+### CurseForge Mods
+
+Searching Modrinth works instantly out of the box. To search CurseForge, you need an API key.
+
+1. Open **Settings** in the launcher.
+2. Find **CurseForge API Key**.
+3. Paste your key and click **Save**.
+*(Alternatively, set your environment variable: `CURSEFORGE_API_KEY=your-api-key`)*
+
+---
+
+## 📖 App Features overview
+
+* **Home:** Your main dashboard to select your account, instance, and launch the game.
+* **Instances:** Create, edit, duplicate, import, export, and delete your Minecraft profiles.
+* **Mods & Modpacks:** Search, install, and manage mods. Fully supports Modrinth `.mrpack` files.
+* **Resource Packs & Shaders:** Easily manage visual upgrades for your selected instance.
+* **Accounts:** Switch between Offline testing accounts and official Microsoft accounts.
+* **Settings:** Tweak your theme, RAM allocation, Java paths, and API keys.
+* **Console:** View live background logs and Minecraft output for easy troubleshooting.
+* **Gallery:** View screenshots taken within your selected instance.
+
+---
+
+## 🛠️ Troubleshooting Common Problems
+
+**"npm is not recognized"**
+Node.js wasn't installed correctly, or you didn't restart your terminal after installing it. Reinstall Node.js, close your terminal completely, open a new one, and try again.
+
+**The App won't open / "Electron uninstall" error**
+Sometimes the desktop window tool (Electron) fails to download properly. Run these commands to fix it:
 
 ```bash
-DAWN_MICROSOFT_CLIENT_ID=your-client-id
+npm run repair:electron
+npm run dev
+
 ```
 
-## Optional: CurseForge
+*(Windows Users: If your project folder is inside a **OneDrive** folder, OneDrive's auto-sync might be blocking the files. Move the entire Dawn Launcher folder to a normal directory like `C:\Projects\DawnLauncher` and try again).*
 
-Modrinth search works without a key.
+**"Java is missing"**
+Ensure you have Java 17 or 21 installed on your PC. Then open Dawn Launcher, go to **Settings > Java**, and click **Scan**.
 
-CurseForge needs an API key.
+---
 
-Add it inside the app:
+## 💻 For Developers: Building the App
 
-1. Open `Settings`.
-2. Find `CurseForge API key`.
-3. Paste your key.
-4. Click `Save`.
+If you want to package the app into a final, shareable installer (like a `.exe` or `.dmg`):
 
-Or set it as an environment variable:
-
-```bash
-CURSEFORGE_API_KEY=your-api-key
-```
-
-## What Each Page Does
-
-`Home`
-
-Main launch screen. Choose an account, choose an instance, and press Play.
-
-`Instances`
-
-Create, edit, duplicate, export, import, and delete Minecraft profiles.
-
-`Mods`
-
-Search and install mods. Enable, disable, import, or remove local mod files.
-
-`Modpacks`
-
-Search and install modpacks. Modrinth `.mrpack` support is included.
-
-`Resource Packs`
-
-Manage resource packs for the selected instance.
-
-`Shaders`
-
-Manage shader packs for the selected instance.
-
-`Accounts`
-
-Add offline accounts or sign in with Microsoft.
-
-`Settings`
-
-Change theme, RAM, Java path, Minecraft folder, download settings, Microsoft client ID, and CurseForge key.
-
-`Console`
-
-Shows launch logs and Minecraft output.
-
-`Gallery`
-
-Shows screenshots from the selected instance.
-
-## Build The App
-
-To build the app files:
-
-```bash
-npm run build
-```
-
-To create a desktop installer/package:
-
-```bash
-npm run dist
-```
-
-The packaged app will be created in:
-
-```bash
-release
-```
-
-## Quick Test
-
-Run:
+**Verify all files are intact:**
 
 ```bash
 npm run verify
+
 ```
 
-This checks that the main project files exist.
-
-## Common Problems And Fixes
-
-### `npm` is not recognized
-
-Node.js is not installed correctly, or the terminal was opened before Node.js was installed.
-
-Fix:
-
-1. Install Node.js from https://nodejs.org
-2. Close the terminal.
-3. Open a new terminal.
-4. Run:
+**Compile the code:**
 
 ```bash
-npm --version
+npm run build
+
 ```
 
-### App does not open
-
-Try:
+**Create the final desktop installer:**
 
 ```bash
-npm install
-npm run dev
+npm run dist
+
 ```
 
-If it still fails, read the terminal error. It usually says which package or setting is missing.
+*Your final packaged app will appear inside the `release` folder!*
 
-### Error: `Electron uninstall`
-
-This means the Electron desktop executable did not download correctly.
-
-Fix:
-
-```bash
-npm run repair:electron
-npm run dev
 ```
 
-**Windows + OneDrive:** If the project lives under `OneDrive`, move it to a normal folder such as `C:\dev\dawn-launcher`. OneDrive file locking often breaks Electron installs. Then:
-
-```powershell
-Remove-Item -Recurse -Force node_modules\electron -ErrorAction SilentlyContinue
-npm install
-npm run repair:electron
-npm run dev
 ```
-
-If it still happens, delete `node_modules/electron` and install again:
-
-```powershell
-Remove-Item -Recurse -Force node_modules\electron
-npm install
-npm run dev
-```
-
-### Java is missing
-
-Install Java 17 or Java 21, then open Dawn Launcher and go to:
-
-```bash
-Settings > Java
-```
-
-Click `Scan`.
-
-### Microsoft login does not work
-
-You must add a Microsoft client ID first.
-
-Offline accounts do not need Microsoft login.
-
-### CurseForge search does not work
-
-CurseForge requires an API key. Modrinth does not.
-
-### First launch is slow
-
-That is normal. Minecraft must download assets, libraries, native files, and the client jar.
-
-## Project Structure
-
-```text
-src/
-  api/          Online APIs like Modrinth and CurseForge
-  animations/   Shared animation settings
-  components/   Reusable UI parts
-  electron/     Electron main process and preload bridge
-  hooks/        React hooks
-  launcher/     Accounts, instances, downloads, Java, gallery, plugins
-  minecraft/    Minecraft manifests, launch args, loaders, launching
-  pages/        App screens
-  plugins/      Plugin host foundation
-  services/     Small shared helpers
-  store/        App state
-  styles/       Tailwind and global CSS
-  types/        Shared TypeScript types
-  utils/        Utility functions
-```
-
-## Important Notes
-
-- Offline accounts are useful for testing.
-- Microsoft login requires a real Microsoft/Azure client ID.
-- Online multiplayer requires a real Minecraft Java account.
-- CurseForge requires an API key.
-- Minecraft downloads depend on Mojang/Microsoft services being online.
