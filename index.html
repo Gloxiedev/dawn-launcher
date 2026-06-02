@@ -1,563 +1,873 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dawn Launcher | A New Era of Minecraft</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 
-<title>Dawn Launcher</title>
+    <style>
+        /* === CSS VARIABLES & THEME === */
+        :root {
+            /* Arc/Windows 11 inspired dark mode palette */
+            --bg-base: #050507;
+            --bg-surface: #0a0a0d;
+            --bg-surface-elevated: rgba(20, 20, 25, 0.6);
+            
+            /* Minecraft/Sunrise inspired vibrant accents */
+            --brand-orange: #FF6B00;
+            --brand-yellow: #FFB300;
+            --accent-amethyst: #B24BF3;
+            --accent-ender: #00D4A8;
+            
+            /* Typography colors */
+            --text-primary: #FFFFFF;
+            --text-secondary: #A1A1AA;
+            
+            /* Glassmorphism */
+            --glass-bg: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.06);
+            --glass-highlight: rgba(255, 255, 255, 0.1);
+            
+            /* Layout */
+            --radius-sm: 12px;
+            --radius-md: 24px;
+            --radius-lg: 40px;
+            
+            /* Easing */
+            --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+        }
 
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+        /* === RESET & BASE === */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Outfit', sans-serif;
+        }
 
-<style>
-:root{
-    --bg-dark:#05070e;
-    --bg-card:#0f1218;
-    --primary:#ff8c42;
-    --secondary:#ffd700;
-    --text-main:#fff;
-    --text-muted:#a0aec0;
-    --glass:rgba(255,255,255,.05);
-    --glass-border:rgba(255,255,255,.1);
-}
+        html {
+            scroll-behavior: smooth;
+            background: var(--bg-base);
+            color: var(--text-primary);
+            overflow-x: hidden;
+        }
 
-*{
-    margin:0;
-    padding:0;
-    box-sizing:border-box;
-    font-family:'Outfit',sans-serif;
-}
+        body {
+            position: relative;
+            min-height: 100vh;
+        }
 
-html{
-    scroll-behavior:smooth;
-}
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 10px; }
+        ::-webkit-scrollbar-track { background: var(--bg-base); }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
 
-body{
-    background:var(--bg-dark);
-    color:white;
-    overflow-x:hidden;
-}
+        /* === GLOBAL COMPONENTS === */
+        .container {
+            width: min(1400px, 92%);
+            margin: 0 auto;
+        }
 
-.container{
-    width:min(1200px,90%);
-    margin:auto;
-}
+        .section {
+            padding: 120px 0;
+            position: relative;
+        }
 
-a{
-    text-decoration:none;
-    color:inherit;
-}
+        .text-gradient {
+            background: linear-gradient(135deg, var(--text-primary) 0%, rgba(255,255,255,0.5) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
 
-.section{
-    padding:100px 0;
-}
+        .text-brand-gradient {
+            background: linear-gradient(135deg, var(--brand-orange) 0%, var(--brand-yellow) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
 
-.btn{
-    display:inline-block;
-    padding:14px 30px;
-    border-radius:50px;
-    font-weight:700;
-    transition:.3s;
-}
+        .tagline {
+            display: inline-block;
+            padding: 8px 16px;
+            background: rgba(255, 107, 0, 0.1);
+            border: 1px solid rgba(255, 107, 0, 0.2);
+            color: var(--brand-orange);
+            border-radius: 100px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            margin-bottom: 24px;
+        }
 
-.btn-primary{
-    background:linear-gradient(45deg,#ff8c42,#ff5500);
-}
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 16px 32px;
+            border-radius: 100px;
+            font-weight: 600;
+            font-size: 1.1rem;
+            text-decoration: none;
+            transition: all 0.4s var(--ease-out-expo);
+            position: relative;
+            overflow: hidden;
+            cursor: pointer;
+            border: none;
+        }
 
-.btn-primary:hover{
-    transform:translateY(-3px);
-}
+        .btn-primary {
+            background: linear-gradient(45deg, var(--brand-orange), #ff4d00);
+            color: white;
+            box-shadow: 0 10px 30px rgba(255, 107, 0, 0.3);
+        }
 
-/* NAVBAR */
+        .btn-primary::before {
+            content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            transition: left 0.5s ease;
+        }
 
-nav{
-    position:fixed;
-    width:100%;
-    z-index:1000;
-    padding:20px 0;
-    transition:.3s;
-}
+        .btn-primary:hover {
+            transform: translateY(-4px) scale(1.02);
+            box-shadow: 0 15px 40px rgba(255, 107, 0, 0.4);
+        }
 
-nav.scrolled{
-    background:rgba(5,7,14,.9);
-    backdrop-filter:blur(20px);
-}
+        .btn-primary:hover::before { left: 100%; }
 
-.nav-content{
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-}
+        .btn-secondary {
+            background: var(--glass-bg);
+            color: var(--text-primary);
+            border: 1px solid var(--glass-border);
+            backdrop-filter: blur(10px);
+        }
 
-.logo{
-    font-size:1.6rem;
-    font-weight:800;
-}
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.2);
+            transform: translateY(-4px);
+        }
 
-.logo i{
-    color:gold;
-}
+        /* === AURORA BACKGROUNDS === */
+        .ambient-bg {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100vh;
+            z-index: -1;
+            overflow: hidden;
+            pointer-events: none;
+        }
 
-.nav-links{
-    display:flex;
-    gap:30px;
-}
+        .aurora {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(140px);
+            opacity: 0.4;
+            mix-blend-mode: screen;
+        }
 
-/* HERO */
+        .aurora-1 {
+            top: -20vh; left: -10vw; width: 60vw; height: 60vw;
+            background: var(--brand-orange);
+            animation: float 25s infinite alternate ease-in-out;
+        }
 
-.hero{
-    height:100vh;
-    display:flex;
-    justify-content:center;
-    align-items:center;
-    text-align:center;
-    position:relative;
-}
+        .aurora-2 {
+            bottom: -20vh; right: -10vw; width: 50vw; height: 50vw;
+            background: var(--accent-amethyst);
+            animation: float 30s infinite alternate-reverse ease-in-out;
+        }
 
-.hero-bg{
-    position:absolute;
-    inset:0;
-    background:
-    radial-gradient(circle at 50% 120%,#ff8c42 0%,#8a3500 40%,#05070e 80%);
-}
+        @keyframes float {
+            0% { transform: translate(0, 0) scale(1); }
+            50% { transform: translate(5vw, 10vh) scale(1.1); }
+            100% { transform: translate(-5vw, -5vh) scale(0.9); }
+        }
 
-.hero-content{
-    position:relative;
-    z-index:1;
-}
+        /* === NAVBAR === */
+        nav {
+            position: fixed;
+            top: 0; left: 0; width: 100%;
+            padding: 24px 0;
+            z-index: 1000;
+            transition: all 0.4s var(--ease-out-expo);
+        }
 
-.hero h1{
-    font-size:5rem;
-    line-height:1;
-    margin-bottom:20px;
-}
+        nav.scrolled {
+            padding: 16px 0;
+            background: rgba(5, 5, 7, 0.7);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border-bottom: 1px solid var(--glass-border);
+        }
 
-.hero p{
-    color:var(--text-muted);
-    margin-bottom:35px;
-    font-size:1.2rem;
-}
+        .nav-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--glass-bg);
+            padding: 12px 24px;
+            border-radius: 100px;
+            border: 1px solid var(--glass-border);
+            backdrop-filter: blur(12px);
+        }
 
-/* FEATURES */
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 1.4rem;
+            font-weight: 800;
+            color: var(--text-primary);
+            text-decoration: none;
+        }
 
-.section-title{
-    text-align:center;
-    margin-bottom:60px;
-}
+        .logo i { color: var(--brand-orange); font-size: 1.6rem; }
 
-.features-grid{
-    display:grid;
-    grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
-    gap:25px;
-}
+        .nav-links {
+            display: flex;
+            gap: 32px;
+            align-items: center;
+        }
 
-.feature-card{
-    background:var(--bg-card);
-    padding:35px;
-    border-radius:20px;
-    border:1px solid var(--glass-border);
-    transition:.3s;
-}
+        .nav-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.95rem;
+            transition: color 0.3s;
+        }
 
-.feature-card:hover{
-    transform:translateY(-10px);
-}
+        .nav-links a:hover { color: var(--text-primary); }
 
-.feature-icon{
-    font-size:2rem;
-    color:gold;
-    margin-bottom:15px;
-}
+        /* === HERO SECTION === */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding-top: 120px;
+            position: relative;
+        }
 
-/* STATS */
+        .hero-content {
+            max-width: 900px;
+            margin: 0 auto;
+            z-index: 2;
+        }
 
-.stats{
-    background:#120900;
-}
+        .hero h1 {
+            font-size: clamp(3.5rem, 8vw, 6.5rem);
+            line-height: 1.05;
+            letter-spacing: -0.03em;
+            margin-bottom: 24px;
+            font-weight: 800;
+        }
 
-.stats-flex{
-    display:flex;
-    justify-content:center;
-    flex-wrap:wrap;
-    gap:80px;
-}
+        .hero p {
+            font-size: clamp(1.1rem, 2vw, 1.3rem);
+            color: var(--text-secondary);
+            margin-bottom: 40px;
+            max-width: 600px;
+            margin-inline: auto;
+            line-height: 1.6;
+        }
 
-.stat-item{
-    text-align:center;
-}
+        .hero-actions {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin-bottom: 60px;
+        }
 
-.stat-num{
-    display:block;
-    font-size:3rem;
-    font-weight:800;
-    color:#ff8c42;
-}
+        /* Hero Stats */
+        .hero-stats {
+            display: flex;
+            gap: 40px;
+            justify-content: center;
+            margin-bottom: 60px;
+            padding: 20px 40px;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 100px;
+            backdrop-filter: blur(10px);
+            display: inline-flex;
+        }
 
-/* SCREENSHOTS */
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
 
-.gallery-grid{
-    display:grid;
-    grid-template-columns:repeat(auto-fit,minmax(250px,1fr));
-    gap:20px;
-}
+        .stat-val { font-size: 1.5rem; font-weight: 700; color: var(--text-primary); }
+        .stat-label { font-size: 0.8rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; }
 
-.gallery-item{
-    height:220px;
-    border-radius:15px;
-    background:#151c2c;
-    display:flex;
-    justify-content:center;
-    align-items:center;
-    font-size:3rem;
-}
+        /* Floating Mockup */
+        .hero-mockup-wrapper {
+            perspective: 2000px;
+            margin-top: -20px;
+            width: 100%;
+            max-width: 1100px;
+            z-index: 2;
+        }
 
-/* FAQ */
+        .hero-mockup {
+            width: 100%;
+            border-radius: var(--radius-md);
+            border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 
+                0 30px 100px rgba(0,0,0,0.8),
+                0 0 0 1px rgba(255,255,255,0.05),
+                0 0 80px rgba(255, 107, 0, 0.2);
+            transform-style: preserve-3d;
+            transition: transform 0.1s ease-out;
+            will-change: transform;
+        }
 
-.faq-item{
-    background:var(--bg-card);
-    margin-bottom:15px;
-    border-radius:10px;
-}
+        /* === BENTO FEATURES SECTION === */
+        .section-header {
+            text-align: center;
+            margin-bottom: 80px;
+        }
 
-.faq-question{
-    padding:20px;
-    cursor:pointer;
-    font-weight:700;
-}
+        .section-header h2 {
+            font-size: clamp(2.5rem, 5vw, 4rem);
+            margin-bottom: 16px;
+        }
 
-.faq-answer{
-    max-height:0;
-    overflow:hidden;
-    transition:.3s;
-}
+        .bento-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            grid-auto-rows: minmax(280px, auto);
+            gap: 20px;
+        }
 
-.faq-answer p{
-    padding:20px;
-    color:var(--text-muted);
-}
+        .bento-card {
+            background: var(--bg-surface-elevated);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-md);
+            padding: 40px;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            backdrop-filter: blur(20px);
+            transition: transform 0.4s var(--ease-out-expo), border-color 0.4s;
+            cursor: pointer;
+        }
 
-.faq-item.active .faq-answer{
-    max-height:150px;
-}
+        /* Spotlight Effect */
+        .bento-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: radial-gradient(800px circle at var(--mouse-x) var(--mouse-y), rgba(255, 255, 255, 0.06), transparent 40%);
+            z-index: 0;
+            opacity: 0;
+            transition: opacity 0.4s ease;
+            pointer-events: none;
+        }
 
-/* DISCORD */
+        .bento-card:hover::before { opacity: 1; }
+        .bento-card:hover {
+            transform: translateY(-5px);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
 
-.discord{
-    text-align:center;
-}
+        .bento-content { position: relative; z-index: 1; }
+        
+        .bento-icon {
+            width: 56px; height: 56px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.5rem; color: var(--text-primary);
+            margin-bottom: 24px;
+        }
 
-.discord i{
-    color:#5865F2;
-    font-size:4rem;
-    margin-bottom:20px;
-}
+        .bento-title { font-size: 1.8rem; font-weight: 700; margin-bottom: 12px; }
+        .bento-desc { color: var(--text-secondary); line-height: 1.6; font-size: 1.1rem; }
 
-/* FOOTER */
+        /* Bento Sizing */
+        .bento-large { grid-column: span 2; grid-row: span 2; }
+        .bento-wide { grid-column: span 2; }
+        
+        .bento-visual {
+            position: absolute;
+            bottom: 0; right: 0;
+            width: 100%; height: 60%;
+            background-size: cover;
+            background-position: center bottom;
+            mask-image: linear-gradient(to top, rgba(0,0,0,1) 0%, rgba(0,0,0,0) 100%);
+            -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,1) 0%, rgba(0,0,0,0) 100%);
+            z-index: 0;
+            opacity: 0.5;
+            transition: opacity 0.4s;
+        }
 
-footer{
-    background:#020205;
-    padding:60px 0;
-}
+        .bento-card:hover .bento-visual { opacity: 0.8; }
 
-.footer-grid{
-    display:grid;
-    grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
-    gap:30px;
-}
+        /* Specific Bento Styles */
+        .card-perf .bento-title { color: var(--brand-orange); }
+        .card-mod .bento-title { color: var(--accent-ender); }
+        .card-ui .bento-title { color: var(--accent-amethyst); }
 
-.footer-title{
-    margin-bottom:15px;
-}
+        /* Mockup elements inside bento */
+        .bento-mini-mockup {
+            margin-top: 30px;
+            background: #111;
+            border: 1px solid #333;
+            border-radius: 8px 8px 0 0;
+            padding: 15px;
+            display: flex; gap: 10px; flex-direction: column;
+        }
+        .mock-bar { height: 8px; background: #333; border-radius: 4px; width: 100%; }
+        .mock-bar.w-70 { width: 70%; background: var(--brand-orange); }
+        .mock-bar.w-40 { width: 40%; background: var(--accent-ender); }
 
-.footer-links a{
-    display:block;
-    color:var(--text-muted);
-    margin-bottom:10px;
-}
 
-.copy{
-    margin-top:40px;
-    text-align:center;
-    color:#666;
-}
+        /* === PERFORMANCE SECTION === */
+        .perf-section {
+            background: linear-gradient(to bottom, transparent, rgba(255, 107, 0, 0.03), transparent);
+        }
 
-/* MOBILE */
+        .chart-container {
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            gap: 40px;
+            height: 300px;
+            margin-top: 60px;
+            padding-bottom: 40px;
+            border-bottom: 1px solid var(--glass-border);
+        }
 
-@media(max-width:768px){
+        .bar-wrap {
+            display: flex; flex-direction: column; align-items: center; gap: 16px;
+        }
 
-.hero h1{
-    font-size:3rem;
-}
+        .bar {
+            width: 80px;
+            border-radius: 12px 12px 0 0;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-bottom: none;
+            position: relative;
+            overflow: hidden;
+            display: flex; justify-content: center; padding-top: 16px; font-weight: 700;
+        }
 
-.nav-links{
-    display:none;
-}
+        .bar-vanilla { height: 100px; }
+        .bar-forge { height: 80px; }
+        .bar-dawn { height: 260px; background: linear-gradient(to top, rgba(255,107,0,0.1), rgba(255,107,0,0.4)); border-color: rgba(255,107,0,0.3); color: var(--brand-orange); }
 
-.stats-flex{
-    gap:40px;
-}
+        /* === COMMUNITY & SOCIAL === */
+        .social-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
 
-}
-</style>
+        .social-card {
+            padding: 60px 40px;
+            border-radius: var(--radius-md);
+            text-align: center;
+            text-decoration: none;
+            position: relative;
+            overflow: hidden;
+            border: 1px solid var(--glass-border);
+            transition: all 0.4s var(--ease-out-expo);
+        }
+
+        .discord-card { background: rgba(88, 101, 242, 0.05); }
+        .discord-card:hover { background: rgba(88, 101, 242, 0.1); border-color: #5865F2; transform: translateY(-5px); }
+        .discord-card i { color: #5865F2; }
+
+        .github-card { background: rgba(255, 255, 255, 0.02); }
+        .github-card:hover { background: rgba(255, 255, 255, 0.05); border-color: white; transform: translateY(-5px); }
+        .github-card i { color: white; }
+
+        .social-card i { font-size: 4rem; margin-bottom: 24px; }
+        .social-card h3 { font-size: 2rem; color: white; margin-bottom: 12px; }
+        .social-card p { color: var(--text-secondary); }
+
+        /* === CTA SECTION === */
+        .cta-section {
+            text-align: center;
+            padding: 160px 0;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .cta-bg {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 100vw; height: 100vw;
+            background: radial-gradient(circle, rgba(255,107,0,0.1) 0%, transparent 60%);
+            z-index: -1;
+        }
+
+        .cta-box {
+            background: var(--bg-surface-elevated);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-lg);
+            padding: 80px 40px;
+            backdrop-filter: blur(20px);
+            box-shadow: 0 40px 100px rgba(0,0,0,0.5);
+        }
+
+        /* === FOOTER === */
+        footer {
+            border-top: 1px solid var(--glass-border);
+            padding: 80px 0 40px;
+            background: #020203;
+        }
+
+        .footer-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr;
+            gap: 60px;
+            margin-bottom: 60px;
+        }
+
+        .footer-brand p { color: var(--text-secondary); margin-top: 16px; max-width: 300px; line-height: 1.6; }
+        .footer-title { color: white; font-weight: 600; margin-bottom: 24px; font-size: 1.1rem; }
+        
+        .footer-links { display: flex; flex-direction: column; gap: 12px; }
+        .footer-links a {
+            color: var(--text-secondary); text-decoration: none; transition: color 0.3s;
+        }
+        .footer-links a:hover { color: var(--brand-orange); }
+
+        .footer-bottom {
+            border-top: 1px solid var(--glass-border);
+            padding-top: 30px;
+            display: flex; justify-content: space-between; align-items: center;
+            color: var(--text-secondary); font-size: 0.9rem;
+        }
+
+        /* === ANIMATIONS & UTILS === */
+        .reveal {
+            opacity: 0;
+            transform: translateY(40px);
+            transition: all 0.8s var(--ease-out-expo);
+        }
+        .reveal.active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* RESPONSIVE */
+        @media (max-width: 1024px) {
+            .bento-grid { grid-template-columns: repeat(2, 1fr); }
+            .bento-large { grid-column: span 2; }
+            .bento-wide { grid-column: span 2; }
+            .hero-stats { flex-wrap: wrap; gap: 20px; }
+        }
+
+        @media (max-width: 768px) {
+            .nav-links { display: none; }
+            .hero h1 { font-size: clamp(2.5rem, 10vw, 4rem); }
+            .hero-actions { flex-direction: column; }
+            .bento-grid { grid-template-columns: 1fr; }
+            .bento-large, .bento-wide { grid-column: span 1; grid-row: span 1; }
+            .social-grid { grid-template-columns: 1fr; }
+            .footer-grid { grid-template-columns: 1fr; gap: 40px; }
+            .footer-bottom { flex-direction: column; gap: 20px; text-align: center; }
+        }
+    </style>
 </head>
-
 <body>
 
-<nav id="navbar">
-<div class="container nav-content">
-<div class="logo"><i class="fas fa-sun"></i> Dawn Launcher</div>
+    <div class="ambient-bg">
+        <div class="aurora aurora-1"></div>
+        <div class="aurora aurora-2"></div>
+    </div>
 
-<div class="nav-links">
-<a href="#home">Home</a>
-<a href="#features">Features</a>
-<a href="#screenshots">Screenshots</a>
-<a href="#faq">FAQ</a>
-</div>
-</div>
-</nav>
+    <nav id="navbar">
+        <div class="container nav-container">
+            <a href="#" class="logo">
+                <i class="fas fa-sun"></i> Dawn
+            </a>
+            <div class="nav-links">
+                <a href="#features">Features</a>
+                <a href="#performance">Performance</a>
+                <a href="#community">Community</a>
+            </div>
+            <div>
+                <a href="#" class="btn btn-primary" style="padding: 10px 24px; font-size: 0.95rem;">Download</a>
+            </div>
+        </div>
+    </nav>
 
-<section class="hero" id="home">
-<div class="hero-bg"></div>
+    <section class="hero reveal" id="home">
+        <div class="hero-content">
+            <span class="tagline">The Ultimate Minecraft Client</span>
+            <h1>A New <span class="text-brand-gradient">Dawn</span><br>For Minecraft</h1>
+            <p>Experience Minecraft like never before. High FPS, seamless mod management, and a premium Sunrise UI designed for the modern gamer.</p>
+            
+            <div class="hero-actions">
+                <a href="#" class="btn btn-primary">
+                    <i class="fab fa-windows"></i> Download for Windows
+                </a>
+                <a href="#features" class="btn btn-secondary">
+                    Explore Features
+                </a>
+            </div>
 
-<div class="hero-content">
-<h1>Rise Above<br>The Competition</h1>
+            <div class="hero-stats">
+                <div class="stat-item">
+                    <span class="stat-val">500K+</span>
+                    <span class="stat-label">Downloads</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-val">1.8 - 1.21</span>
+                    <span class="stat-label">Versions Supported</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-val">Native</span>
+                    <span class="stat-label">Mod Support</span>
+                </div>
+            </div>
+        </div>
 
-<p>
-Experience the ultimate Minecraft launcher with
-high FPS, built-in mods, and a premium sunrise UI.
-</p>
+        <div class="hero-mockup-wrapper reveal">
+            <img src="image.png" alt="Dawn Launcher Interface" class="hero-mockup">
+        </div>
+    </section>
 
-<a href="#" class="btn btn-primary">
-<i class="fas fa-download"></i>
-Download Now
-</a>
-</div>
-</section>
+    <section class="section" id="features">
+        <div class="container">
+            <div class="section-header reveal">
+                <span class="tagline">Everything you need</span>
+                <h2><span class="text-gradient">Engineered for</span> Excellence</h2>
+                <p style="color: var(--text-secondary); font-size: 1.2rem;">We rebuilt the launcher experience from the ground up.</p>
+            </div>
 
-<section class="section" id="features">
-<div class="container">
+            <div class="bento-grid">
+                <div class="bento-card bento-large card-perf reveal bento-spotlight">
+                    <div class="bento-content">
+                        <div class="bento-icon"><i class="fas fa-bolt"></i></div>
+                        <h3 class="bento-title">Unparalleled Performance</h3>
+                        <p class="bento-desc">Dawn Launcher comes pre-configured with industry-leading optimization mods like Sodium, Lithium, and Iris. Experience blazing fast load times and buttery smooth framerates right out of the box.</p>
+                        
+                        <div class="bento-mini-mockup">
+                            <div style="font-size: 0.8rem; color: #888; display: flex; justify-content: space-between;"><span>Memory Allocation</span> <span>4096 MB</span></div>
+                            <div class="mock-bar w-70"></div>
+                            <div style="font-size: 0.8rem; color: #888; display: flex; justify-content: space-between; margin-top: 10px;"><span>JVM Arguments</span> <span>Optimized</span></div>
+                            <div class="mock-bar w-40"></div>
+                        </div>
+                    </div>
+                </div>
 
-<div class="section-title">
-<h2>Why Choose Dawn?</h2>
-</div>
+                <div class="bento-card bento-wide card-mod reveal bento-spotlight" style="transition-delay: 0.1s;">
+                    <div class="bento-content">
+                        <div class="bento-icon"><i class="fas fa-puzzle-piece"></i></div>
+                        <h3 class="bento-title">Instant Modding</h3>
+                        <p class="bento-desc">Browse, install, and manage mods directly from Modrinth and CurseForge without ever leaving the launcher. Dependency resolution happens automatically.</p>
+                    </div>
+                </div>
 
-<div class="features-grid">
+                <div class="bento-card card-ui reveal bento-spotlight" style="transition-delay: 0.2s;">
+                    <div class="bento-content">
+                        <div class="bento-icon"><i class="fas fa-paint-brush"></i></div>
+                        <h3 class="bento-title">Sunrise UI</h3>
+                        <p class="bento-desc">A gorgeous, responsive interface built with modern web technologies and glassmorphism.</p>
+                    </div>
+                </div>
 
-<div class="feature-card">
-<div class="feature-icon">
-<i class="fas fa-bolt"></i>
-</div>
-<h3>High FPS</h3>
-<p>Optimized for maximum performance.</p>
-</div>
+                <div class="bento-card reveal bento-spotlight" style="transition-delay: 0.3s;">
+                    <div class="bento-content">
+                        <div class="bento-icon"><i class="fas fa-layer-group"></i></div>
+                        <h3 class="bento-title">Smart Instances</h3>
+                        <p class="bento-desc">Keep your Vanilla, Fabric, and Forge worlds completely isolated with dedicated save folders.</p>
+                    </div>
+                </div>
 
-<div class="feature-card">
-<div class="feature-icon">
-<i class="fas fa-paint-brush"></i>
-</div>
-<h3>Modern UI</h3>
-<p>Beautiful sunrise-inspired interface.</p>
-</div>
+                <div class="bento-card bento-wide reveal bento-spotlight" style="transition-delay: 0.4s;">
+                    <div class="bento-content">
+                        <div class="bento-icon"><i class="fas fa-server"></i></div>
+                        <h3 class="bento-title">Server Explorer</h3>
+                        <p class="bento-desc">Discover new communities and manage your server lists before you even launch the game. See ping, player counts, and MOTDs live.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
 
-<div class="feature-card">
-<div class="feature-icon">
-<i class="fas fa-puzzle-piece"></i>
-</div>
-<h3>Mod Support</h3>
-<p>Install and manage mods with ease.</p>
-</div>
+    <section class="section perf-section" id="performance">
+        <div class="container">
+            <div class="section-header reveal">
+                <span class="tagline">Benchmarks</span>
+                <h2><span class="text-gradient">Leave the lag behind.</span></h2>
+                <p style="color: var(--text-secondary); font-size: 1.2rem;">Average FPS on a mid-range system (1080p, Render Distance 16). Performance not garunteed.</p>
+            </div>
 
-<div class="feature-card">
-<div class="feature-icon">
-<i class="fas fa-server"></i>
-</div>
-<h3>Server Browser</h3>
-<p>Quickly join your favorite servers.</p>
-</div>
+            <div class="chart-container reveal">
+                <div class="bar-wrap">
+                    <div class="bar bar-vanilla">65</div>
+                    <span style="color: var(--text-secondary); font-weight: 500;">Vanilla</span>
+                </div>
+                <div class="bar-wrap">
+                    <div class="bar bar-forge">45</div>
+                    <span style="color: var(--text-secondary); font-weight: 500;">Heavy Modpack</span>
+                </div>
+                <div class="bar-wrap">
+                    <div class="bar bar-dawn">69+</div>
+                    <span style="color: var(--text-primary); font-weight: 800; font-size: 1.2rem;">Dawn</span>
+                </div>
+            </div>
+        </div>
+    </section>
 
-<div class="feature-card">
-<div class="feature-icon">
-<i class="fas fa-images"></i>
-</div>
-<h3>Texture Packs</h3>
-<p>Manage texture packs directly.</p>
-</div>
+    <section class="section" id="community">
+        <div class="container">
+            <div class="section-header reveal">
+                <h2>Join the <span class="text-brand-gradient">Community</span></h2>
+                <p style="color: var(--text-secondary); font-size: 1.2rem;">Dawn is built by players, for players. Get involved.</p>
+            </div>
 
-<div class="feature-card">
-<div class="feature-icon">
-<i class="fas fa-rocket"></i>
-</div>
-<h3>Fast Launch</h3>
-<p>Start Minecraft in seconds.</p>
-</div>
+            <div class="social-grid reveal">
+                <a href="https://discord.gg/CGCSHb4vR7" class="social-card discord-card">
+                    <i class="fab fa-discord"></i>
+                    <h3>Discord</h3>
+                    <p>Get fast support, tips and more!</p>
+                </a>
+                <a href="https://github.com/Gloxiedev/dawn-launcher" class="social-card github-card" style="transition-delay: 0.1s;">
+                    <i class="fab fa-github"></i>
+                    <h3>GitHub</h3>
+                    <p>Dawn is open source. Contribute code, report bugs, and shape the future.</p>
+                </a>
+            </div>
+        </div>
+    </section>
 
-</div>
-</div>
-</section>
+    <section class="section cta-section">
+        <div class="cta-bg"></div>
+        <div class="container reveal">
+            <div class="cta-box">
+                <h2 style="font-size: clamp(2.5rem, 5vw, 4rem); margin-bottom: 24px; font-weight: 800;">Ready to <span class="text-brand-gradient">upgrade?</span></h2>
+                <p style="color: var(--text-secondary); font-size: 1.2rem; margin-bottom: 40px; max-width: 600px; margin-inline: auto;">Switch to the smoothest Minecraft Launcher today!</p>
+                <a href="#" class="btn btn-primary" style="padding: 20px 48px; font-size: 1.2rem;">
+                    <i class="fas fa-download"></i> Download Dawn Launcher
+                </a>
+                <p style="color: #666; font-size: 0.9rem; margin-top: 20px;">Free forever. No ads. Built for Windows 10/11, Linux*</p>
+            </div>
+        </div>
+    </section>
 
-<section class="section stats">
-<div class="container">
+    <footer>
+        <div class="container">
+            <div class="footer-grid">
+                <div class="footer-brand">
+                    <a href="#" class="logo">
+                        <i class="fas fa-sun"></i> Dawn
+                    </a>
+                    <p>The premium Minecraft launcher designed for performance, modding, and aesthetics.</p>
+                </div>
+                
+                <div>
+                    <h4 class="footer-title">Product</h4>
+                    <div class="footer-links">
+                        <a href="#">Download</a>
+                        <a href="#">Features</a>
+                        <a href="#">Changelog</a>
+                    </div>
+                </div>
 
-<div class="stats-flex">
+                <div>
+                    <h4 class="footer-title">Resources</h4>
+                    <div class="footer-links">
+                        <a href="#">Documentation</a>
+                        <a href="#">API</a>
+                        <a href="#">Help Center</a>
+                    </div>
+                </div>
 
-<div class="stat-item">
-<span class="stat-num">500K+</span>
-Downloads
-</div>
+                <div>
+                    <h4 class="footer-title">Legal</h4>
+                    <div class="footer-links">
+                        <a href="#">Privacy Policy</a>
+                        <a href="#">Terms of Service</a>
+                        <a href="#">EULA</a>
+                    </div>
+                </div>
+            </div>
 
-<div class="stat-item">
-<span class="stat-num">50K+</span>
-Active Players
-</div>
+            <div class="footer-bottom">
+                <p>&copy; Built with ❤️ by glox.dev, omkrish012</p>
+                <p>Website built by abh1✨</p>
+                <p>Not affiliated with Mojang AB, Microslop Corporation or XBOX Game Studios.</p>
+            </div>
+        </div>
+    </footer>
 
-<div class="stat-item">
-<span class="stat-num">1.8+</span>
-Versions
-</div>
+    <script>
+        // Navbar scroll effect
+        const navbar = document.getElementById('navbar');
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 50) {
+                navbar.classList.add('scrolled');
+            } else {
+                navbar.classList.remove('scrolled');
+            }
+        });
 
-</div>
-</div>
-</section>
+        // Reveal Animations using Intersection Observer
+        const revealElements = document.querySelectorAll('.reveal');
+        const revealObserver = new IntersectionObserver((entries, observer) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('active');
+                    observer.unobserve(entry.target);
+                }
+            });
+        }, {
+            threshold: 0.1,
+            rootMargin: "0px 0px -50px 0px"
+        });
 
-<section class="section" id="screenshots">
-<div class="container">
+        revealElements.forEach(el => revealObserver.observe(el));
 
-<div class="section-title">
-<h2>Screenshots</h2>
-</div>
+        // Spotlight effect for Bento Cards
+        const bentoCards = document.querySelectorAll('.bento-spotlight');
+        bentoCards.forEach(card => {
+            card.addEventListener('mousemove', (e) => {
+                const rect = card.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                card.style.setProperty('--mouse-x', `${x}px`);
+                card.style.setProperty('--mouse-y', `${y}px`);
+            });
+        });
 
-<div class="gallery-grid">
-
-<div class="gallery-item">
-<i class="fas fa-desktop"></i>
-</div>
-
-<div class="gallery-item">
-<i class="fas fa-gamepad"></i>
-</div>
-
-<div class="gallery-item">
-<i class="fas fa-cube"></i>
-</div>
-
-<div class="gallery-item">
-<i class="fas fa-dragon"></i>
-</div>
-
-</div>
-</div>
-</section>
-
-<section class="section" id="faq">
-<div class="container">
-
-<div class="section-title">
-<h2>Frequently Asked Questions</h2>
-</div>
-
-<div class="faq-item">
-<div class="faq-question">Is Dawn Launcher free?</div>
-<div class="faq-answer">
-<p>Yes, completely free.</p>
-</div>
-</div>
-
-<div class="faq-item">
-<div class="faq-question">Does it support 1.8.9?</div>
-<div class="faq-answer">
-<p>Yes, along with many newer versions.</p>
-</div>
-</div>
-
-<div class="faq-item">
-<div class="faq-question">Can I use mods?</div>
-<div class="faq-answer">
-<p>Absolutely.</p>
-</div>
-</div>
-
-</div>
-</section>
-
-<section class="section discord">
-<div class="container">
-
-<i class="fab fa-discord"></i>
-
-<h2>Join Our Community</h2>
-
-<p>Get updates, support, and announcements.</p>
-
-<br>
-
-<a href="#" class="btn btn-primary">
-Join Discord
-</a>
-
-</div>
-</section>
-
-<footer>
-
-<div class="container">
-
-<div class="footer-grid">
-
-<div>
-<h3 class="footer-title">Dawn Launcher</h3>
-<p>The fastest way to play Minecraft.</p>
-</div>
-
-<div>
-<h3 class="footer-title">Product</h3>
-<div class="footer-links">
-<a href="#">Download</a>
-<a href="#">Features</a>
-</div>
-</div>
-
-<div>
-<h3 class="footer-title">Support</h3>
-<div class="footer-links">
-<a href="#">FAQ</a>
-<a href="#">Contact</a>
-</div>
-</div>
-
-<div>
-<h3 class="footer-title">Social</h3>
-<div class="footer-links">
-<a href="#">Discord</a>
-<a href="#">GitHub</a>
-</div>
-</div>
-
-</div>
-
-<div class="copy">
-© 2026 Dawn Launcher. Not affiliated with Mojang.
-</div>
-
-</div>
-</footer>
-
-<script>
-window.addEventListener("scroll",()=>{
-    const nav=document.getElementById("navbar");
-
-    if(window.scrollY>50){
-        nav.classList.add("scrolled");
-    }else{
-        nav.classList.remove("scrolled");
-    }
-});
-
-document.querySelectorAll(".faq-question").forEach(item=>{
-    item.addEventListener("click",()=>{
-        item.parentElement.classList.toggle("active");
-    });
-});
-</script>
-
+        // 3D Tilt Effect for Hero Mockup
+        const mockupWrapper = document.querySelector('.hero-mockup-wrapper');
+        const mockup = document.querySelector('.hero-mockup');
+        
+        if (mockupWrapper && window.innerWidth > 768) {
+            document.addEventListener('mousemove', (e) => {
+                // Calculate rotation based on mouse position relative to center of screen
+                const xAxis = (window.innerWidth / 2 - e.pageX) / 60;
+                const yAxis = (window.innerHeight / 2 - e.pageY) / 60;
+                
+                // Apply rotation with a smooth limit
+                mockup.style.transform = `rotateY(${xAxis}deg) rotateX(${yAxis}deg)`;
+            });
+            
+            // Reset on mouse leave window
+            document.addEventListener('mouseleave', () => {
+                mockup.style.transform = `rotateY(0deg) rotateX(0deg)`;
+            });
+        }
+    </script>
 </body>
 </html>
