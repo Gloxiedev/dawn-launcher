@@ -89,10 +89,31 @@ export class MinecraftService {
     const abort = new AbortController();
     const launchedAt = Date.now();
     const historyId = nanoid();
+    const launchTimeout = setTimeout(() => {
+      abort.abort();
+    }, 600000);
 
     this.sessions.set(input.instanceId, { state: 'preparing', abort, historyId, launchedAt });
 
     try {
+      const stageTimers = new Map<string, number>();
+      const startStage = (name: string) => {
+        stageTimers.set(name, Date.now());
+      };
+      const endStage = (name: string) => {
+        const started = stageTimers.get(name);
+        if (!started) return;
+        this.emit(input.instanceId, 'debug', `${name}: ${Date.now() - started}ms`);
+      };
+      const stage = async <T>(name: string, action: () => Promise<T>): Promise<T> => {
+        startStage(name);
+        try {
+          return await action();
+        } finally {
+          endStage(name);
+        }
+      };
+
       const data = await this.database.read();
       let instance = data.instances.find((item) => item.id === input.instanceId);
       let account = data.accounts.find((item) => item.id === input.accountId);
@@ -111,7 +132,7 @@ export class MinecraftService {
         account = await this.accounts.ensureValidSession(account);
       }
 
-      const validationIssues = await validateInstanceBeforeLaunch(instance);
+      const validationIssues = await stage('Validate Instance', async () => validateInstanceBeforeLaunch(instance!));
       for (const issue of validationIssues) {
         this.emit(input.instanceId, issue.level, issue.message);
         if (issue.level === 'error') {
@@ -123,55 +144,112 @@ export class MinecraftService {
 
       if (instance.loader !== 'vanilla' && !instance.launchVersionId) {
         this.emit(input.instanceId, 'info', `Installing ${instance.loader} loader`);
-        instance = await this.loaders.install(instance, data.settings);
+        instance = await stage('Install Loader', async () => this.loaders.install(instance!, data.settings));
       }
 
       if (!instance.launchVersionId && instance.loader !== 'vanilla') {
         throw new Error(`Failed to install ${instance.loader} loader. Please try again or use vanilla Minecraft.`);
       }
 
-      await this.instances.ensureRoots(data.settings);
+      await stage('Prepare Instance Roots', async () => this.instances.ensureRoots(data.settings));
       this.emit(input.instanceId, 'info', 'Preparing instance');
 
-      const gameVersion = await this.versions.resolveAlias(instance.gameVersion);
+      const gameVersion = await stage('Resolve Version Alias', async () => this.versions.resolveAlias(instance!.gameVersion));
       const versionId = instance.launchVersionId || gameVersion;
       const requiredJavaMajor =
-        (await this.versions.requiredJavaMajor(versionId, data.settings)) ?? this.java.requiredMajor(gameVersion);
+        (await stage('Resolve Required Java', async () => this.versions.requiredJavaMajor(versionId, data.settings))) ?? this.java.requiredMajor(gameVersion);
 
       this.setState(input.instanceId, 'downloading');
       this.emit(input.instanceId, 'info', 'Downloading and verifying game files');
 
-      const runtime = instance.javaPath
-        ? await this.validateCustomJava(instance.javaPath, gameVersion, requiredJavaMajor)
-        : await this.java.pick(data.settings, gameVersion, requiredJavaMajor);
+      const runtime = await stage('Select Java Runtime', async () => {
+        if (instance!.javaPath) {
+          return this.validateCustomJava(instance!.javaPath, gameVersion, requiredJavaMajor);
+        }
+        return this.java.pick(data.settings, gameVersion, requiredJavaMajor);
+      });
+
+      if (!runtime || !runtime.path) {
+        throw new Error(`No compatible Java runtime found. Required: Java ${requiredJavaMajor || '8+'}`);
+      }
 
       this.assertNotAborted(input.instanceId);
       this.setState(input.instanceId, 'launching');
 
       this.emit(input.instanceId, 'info', `Using Java ${runtime.major} at ${runtime.path}`);
-      const plan = await this.versions.createLaunchPlan({
-        versionId,
-        instance,
-        account: this.normalizeAccount(account),
-        java: runtime,
-        settings: data.settings
-      });
+      this.emit(input.instanceId, 'debug', `Java version: ${runtime.version}`);
+      if (runtime.major > requiredJavaMajor) {
+        this.emit(input.instanceId, 'warn', `Java ${runtime.major} detected. Recommended Java ${requiredJavaMajor} for ${gameVersion}.`);
+      }
+      this.emit(input.instanceId, 'debug', 'Creating launch plan (downloading game files)...');
+
+      let plan: any;
+      try {
+        console.log(`[MinecraftService] Starting createLaunchPlan for version ${versionId}`);
+        plan = await stage('Create Launch Plan', async () =>
+          this.withTimeout(
+            this.versions.createLaunchPlan({
+              versionId,
+              instance,
+              account: this.normalizeAccount(account),
+              java: runtime,
+              settings: data.settings,
+              onStage: (message) => this.emit(input.instanceId, 'info', message)
+            }),
+            5 * 60_000,
+            `Launch plan timed out after 5 minutes (version: ${versionId})`
+          )
+        );
+        console.log(`[MinecraftService] Successfully created launch plan`);
+      } catch (error) {
+        console.error(`[MinecraftService] createLaunchPlan failed:`, error);
+        const message = error instanceof Error ? error.message : String(error);
+        this.emit(input.instanceId, 'error', `Failed to create launch plan: ${message}`);
+        throw error;
+      }
 
       this.assertNotAborted(input.instanceId);
       this.emit(input.instanceId, 'info', `Launching ${plan.version.id}`);
+      this.emit(input.instanceId, 'debug', `Game directory: ${plan.gameDir}`);
+      this.emit(input.instanceId, 'info', 'Spawning Minecraft process...');
+      this.emit(input.instanceId, 'debug', `Command: ${plan.javaPath} ${plan.args.join(' ')}`);
 
-      const child = spawn(plan.javaPath, plan.args, {
-        cwd: plan.gameDir,
-        detached: process.platform !== 'win32',
-        stdio: ['ignore', 'pipe', 'pipe'],
-        env: {
-          ...process.env,
-          APPDATA: process.env.APPDATA,
-          HOME: process.env.HOME
+      let child: ChildProcess;
+      try {
+        child = await stage('Spawn Minecraft Process', async () => spawn(plan.javaPath, plan.args, {
+          cwd: plan.gameDir,
+          detached: process.platform !== 'win32',
+          stdio: ['ignore', 'pipe', 'pipe'],
+          env: {
+            ...process.env,
+            APPDATA: process.env.APPDATA,
+            HOME: process.env.HOME
+          }
+        }));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.includes('ENOENT')) {
+          this.emit(input.instanceId, 'error', `Java executable not found at: ${plan.javaPath}`);
+        } else {
+          this.emit(input.instanceId, 'error', `Failed to start Minecraft: ${message}`);
         }
-      });
+        throw error;
+      }
 
-      await this.waitForSpawn(child, input.instanceId);
+      if (!child.pid) {
+        throw new Error('Failed to start process (no PID)');
+      }
+      this.emit(input.instanceId, 'info', `PID: ${child.pid}`);
+      this.emit(input.instanceId, 'debug', 'Minecraft stdout attached');
+      this.emit(input.instanceId, 'debug', 'Minecraft stderr attached');
+
+      try {
+        await stage('Wait For Process Spawn', async () => this.waitForSpawn(child, input.instanceId));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.emit(input.instanceId, 'error', `Process failed to start: ${message}`);
+        throw error;
+      }
       this.assertNotAborted(input.instanceId);
 
       const session = this.sessions.get(input.instanceId);
@@ -221,6 +299,7 @@ export class MinecraftService {
         state: 'running'
       };
     } catch (error) {
+      clearTimeout(launchTimeout);
       const aborted =
         error instanceof Error &&
         (error.name === 'AbortError' || this.sessions.get(input.instanceId)?.abort.signal.aborted);
@@ -239,6 +318,8 @@ export class MinecraftService {
       this.emit(input.instanceId, 'error', message);
       await this.logger?.error('launch', message, { instanceId: input.instanceId });
       throw new Error(message);
+    } finally {
+      clearTimeout(launchTimeout);
     }
   }
 
@@ -338,8 +419,18 @@ export class MinecraftService {
 
   private waitForSpawn(child: ChildProcess, instanceId: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      child.once('spawn', resolve);
+      const timeout = setTimeout(() => {
+        child.kill();
+        reject(new Error('Process spawn timeout (30s) - Java may not be installed or accessible'));
+      }, 30_000);
+
+      child.once('spawn', () => {
+        clearTimeout(timeout);
+        resolve();
+      });
+
       child.once('error', (error) => {
+        clearTimeout(timeout);
         this.emit(instanceId, 'error', error.message);
         reject(error);
       });
@@ -351,6 +442,20 @@ export class MinecraftService {
       const error = new Error('Launch cancelled');
       error.name = 'AbortError';
       throw error;
+    }
+  }
+
+  private async withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+    let timeout: NodeJS.Timeout | undefined;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((_resolve, reject) => {
+          timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+        })
+      ]);
+    } finally {
+      if (timeout) clearTimeout(timeout);
     }
   }
 

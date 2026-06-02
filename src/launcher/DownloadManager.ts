@@ -4,6 +4,7 @@ import { access, mkdir, rename, stat, unlink } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { finished } from 'node:stream/promises';
 import { EventEmitter } from 'node:events';
+import { createReadStream } from 'node:fs';
 import type { DownloadProgress } from '@/types/launcher';
 import { friendlyErrorMessage } from './errors';
 import type { Logger } from './Logger';
@@ -19,6 +20,7 @@ export interface DownloadJob {
 
 const MAX_RETRIES = 4;
 const BASE_BACKOFF_MS = 750;
+const DEFAULT_PARALLEL_DOWNLOADS = 6;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -62,7 +64,11 @@ export class DownloadManager extends EventEmitter {
     throw new Error(message);
   }
 
-  async downloadMany(jobs: DownloadJob[]): Promise<void> {
+  async downloadMany(
+    jobs: DownloadJob[],
+    maxParallel = DEFAULT_PARALLEL_DOWNLOADS,
+    onProgress?: (completed: number, total: number) => void
+  ): Promise<void> {
     const seen = new Set<string>();
     const queue = jobs.filter((job) => {
       const key = job.targetPath.toLowerCase();
@@ -73,9 +79,28 @@ export class DownloadManager extends EventEmitter {
       return true;
     });
 
-    for (const job of queue) {
-      await this.download(job);
+    if (!queue.length) {
+      return;
     }
+
+    console.log(`[DownloadManager] Starting download of ${queue.length} unique files (${Math.max(1, maxParallel)} workers)`);
+    const concurrency = Math.max(1, Math.floor(maxParallel));
+    let nextIndex = 0;
+    let completed = 0;
+    const worker = async () => {
+      for (;;) {
+        const index = nextIndex++;
+        if (index >= queue.length) {
+          return;
+        }
+        await this.download(queue[index]);
+        completed += 1;
+        onProgress?.(completed, queue.length);
+      }
+    };
+
+    await Promise.all(Array.from({ length: Math.min(concurrency, queue.length) }, () => worker()));
+    console.log(`[DownloadManager] Finished downloading all ${queue.length} files`);
   }
 
   private async downloadOnce(job: DownloadJob): Promise<string> {
@@ -111,7 +136,7 @@ export class DownloadManager extends EventEmitter {
     });
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120_000);
+    const timeout = setTimeout(() => controller.abort(new Error(`Network timeout after 120s: ${job.url}`)), 120_000);
 
     let response: Response;
     try {
@@ -121,6 +146,9 @@ export class DownloadManager extends EventEmitter {
           'User-Agent': 'DawnLauncher/0.1 (+https://dawn.local)'
         }
       });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to download ${job.label}: ${message}`);
     } finally {
       clearTimeout(timeout);
     }
@@ -232,8 +260,7 @@ export class DownloadManager extends EventEmitter {
         return true;
       }
 
-      const { readFile } = await import('node:fs/promises');
-      const hash = createHash('sha1').update(await readFile(job.targetPath)).digest('hex');
+      const hash = await this.sha1File(job.targetPath);
       if (hash !== job.sha1) {
         await unlink(job.targetPath).catch(() => undefined);
         return false;
@@ -242,6 +269,14 @@ export class DownloadManager extends EventEmitter {
     } catch {
       return false;
     }
+  }
+
+  private async sha1File(path: string): Promise<string> {
+    const hash = createHash('sha1');
+    const stream = createReadStream(path);
+    stream.on('data', (chunk) => hash.update(chunk));
+    await finished(stream);
+    return hash.digest('hex');
   }
 
   private fail(job: DownloadJob, error: string): void {

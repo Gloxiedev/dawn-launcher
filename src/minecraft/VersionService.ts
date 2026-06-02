@@ -1,6 +1,6 @@
 import extract from 'extract-zip';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { delimiter, join } from 'node:path';
 import type { LauncherSettings } from '@/types/launcher';
 import type { DownloadJob } from '@/launcher/DownloadManager';
@@ -9,6 +9,9 @@ import { LauncherPaths } from '@/launcher/LauncherPaths';
 import type { AssetIndex, LaunchPlan, LaunchPlanInput, MojangArgument, MojangDownload, MojangLibrary, MojangRule, MojangVersion, VersionManifest } from './MinecraftTypes';
 
 const MANIFEST_URL = 'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json';
+const MANIFEST_CACHE_TTL_MS = 1000 * 60 * 60 * 6;
+const VERSION_METADATA_TTL_MS = 1000 * 60 * 60 * 24;
+const ASSET_INDEX_TTL_MS = 1000 * 60 * 60 * 24;
 
 export class VersionService {
   private manifest?: VersionManifest;
@@ -43,8 +46,10 @@ export class VersionService {
   }
 
   async createLaunchPlan(input: LaunchPlanInput): Promise<LaunchPlan> {
+    input.onStage?.('Resolving version metadata');
     const version = await this.resolveVersion(input.versionId, input.settings);
-    await this.downloadVersionFiles(version, input.settings);
+    input.onStage?.('Verifying assets and libraries');
+    await this.downloadVersionFiles(version, input.settings, input.onStage);
 
     const assetsRoot = this.paths.assetsRoot(input.settings);
     const librariesRoot = this.paths.librariesRoot(input.settings);
@@ -112,14 +117,22 @@ export class VersionService {
   }
 
   async resolveVersion(versionId: string, settings: LauncherSettings): Promise<MojangVersion> {
+    return this.resolveVersionInternal(versionId, settings, new Set<string>());
+  }
+
+  private async resolveVersionInternal(versionId: string, settings: LauncherSettings, seen: Set<string>): Promise<MojangVersion> {
     const resolvedId = await this.resolveAlias(versionId);
+    if (seen.has(resolvedId)) {
+      throw new Error(`Detected cyclic version inheritance while resolving ${resolvedId}.`);
+    }
+    seen.add(resolvedId);
     const version = await this.loadOrDownloadVersion(resolvedId, settings);
 
     if (!version.inheritsFrom) {
       return version;
     }
 
-    const parent = await this.resolveVersion(version.inheritsFrom, settings);
+    const parent = await this.resolveVersionInternal(version.inheritsFrom, settings, seen);
     return {
       ...parent,
       ...version,
@@ -147,20 +160,29 @@ export class VersionService {
       return this.manifest;
     }
 
-    const response = await fetch(MANIFEST_URL, {
-      headers: { 'User-Agent': 'DawnLauncher/0.1 (+https://dawn.local)' }
-    });
-    if (!response.ok) {
-      throw new Error(`Unable to fetch Minecraft version manifest (${response.status}).`);
+    const cachePath = join(this.paths.versionsRoot(), 'version_manifest_v2.json');
+    if (await this.isFresh(cachePath, MANIFEST_CACHE_TTL_MS)) {
+      this.manifest = JSON.parse(await readFile(cachePath, 'utf8')) as VersionManifest;
+      return this.manifest;
     }
 
-    this.manifest = (await response.json()) as VersionManifest;
-    return this.manifest;
+    try {
+      this.manifest = await this.fetchJsonWithTimeout<VersionManifest>(MANIFEST_URL, 20_000);
+      await mkdir(this.paths.versionsRoot(), { recursive: true });
+      await writeFile(cachePath, JSON.stringify(this.manifest, null, 2), 'utf8');
+      return this.manifest;
+    } catch (error) {
+      if (existsSync(cachePath)) {
+        this.manifest = JSON.parse(await readFile(cachePath, 'utf8')) as VersionManifest;
+        return this.manifest;
+      }
+      throw error;
+    }
   }
 
   private async loadOrDownloadVersion(versionId: string, settings: LauncherSettings): Promise<MojangVersion> {
     const versionPath = join(this.paths.versionsRoot(settings), versionId, `${versionId}.json`);
-    if (existsSync(versionPath)) {
+    if (existsSync(versionPath) && await this.isFresh(versionPath, VERSION_METADATA_TTL_MS)) {
       return JSON.parse(await readFile(versionPath, 'utf8')) as MojangVersion;
     }
 
@@ -170,21 +192,26 @@ export class VersionService {
       throw new Error(`Minecraft version ${versionId} was not found locally or in Mojang manifests.`);
     }
 
-    const response = await fetch(item.url, {
-      headers: { 'User-Agent': 'DawnLauncher/0.1 (+https://dawn.local)' }
-    });
-    if (!response.ok) {
-      throw new Error(`Unable to fetch Minecraft ${versionId} metadata (${response.status}).`);
+    try {
+      const version = await this.fetchJsonWithTimeout<MojangVersion>(item.url, 20_000);
+      await this.writeLocalVersion(version, settings);
+      return version;
+    } catch (error) {
+      if (existsSync(versionPath)) {
+        return JSON.parse(await readFile(versionPath, 'utf8')) as MojangVersion;
+      }
+      throw error;
     }
-
-    const version = (await response.json()) as MojangVersion;
-    await this.writeLocalVersion(version, settings);
-    return version;
   }
 
-  private async downloadVersionFiles(version: MojangVersion, settings: LauncherSettings): Promise<void> {
+  private async downloadVersionFiles(
+    version: MojangVersion,
+    settings: LauncherSettings,
+    onStage?: (message: string) => void
+  ): Promise<void> {
     const jobs: DownloadJob[] = [];
     const versionRoot = join(this.paths.versionsRoot(settings), version.id);
+    console.log(`[VersionService] Starting downloadVersionFiles for ${version.id}`);
 
     if (version.downloads?.client) {
       jobs.push(this.downloadJob(`client:${version.id}`, `Minecraft ${version.id} client`, version.downloads.client, join(versionRoot, `${version.id}.jar`)));
@@ -207,19 +234,35 @@ export class VersionService {
       }
     }
 
-    await this.downloads.downloadMany(jobs);
+    console.log(`[VersionService] Downloading ${jobs.length} files for version ${version.id}`);
+    onStage?.(`Verifying libraries: 0/${jobs.length}`);
+    await this.downloads.downloadMany(jobs, settings.maxParallelDownloads, (completed, total) => {
+      onStage?.(`Verifying libraries: ${completed}/${total}`);
+    });
+    console.log(`[VersionService] Finished downloading files for version ${version.id}`);
 
     if (version.assetIndex) {
-      await this.downloadAssets(version, settings);
+      await this.downloadAssets(version, settings, onStage);
     }
   }
 
-  private async downloadAssets(version: MojangVersion, settings: LauncherSettings): Promise<void> {
+  private async downloadAssets(version: MojangVersion, settings: LauncherSettings, onStage?: (message: string) => void): Promise<void> {
     if (!version.assetIndex) {
       return;
     }
 
+    console.log(`[VersionService] Starting asset download for ${version.assetIndex.id}`);
     const indexPath = join(this.paths.assetsRoot(settings), 'indexes', `${version.assetIndex.id}.json`);
+    if (!(await this.isFresh(indexPath, ASSET_INDEX_TTL_MS)) && version.assetIndex?.url) {
+      await this.downloads.download({
+        id: `assets-index-refresh:${version.assetIndex.id}`,
+        label: `Assets ${version.assetIndex.id}`,
+        url: version.assetIndex.url,
+        targetPath: indexPath,
+        sha1: version.assetIndex.sha1,
+        size: version.assetIndex.size
+      });
+    }
     const index = JSON.parse(await readFile(indexPath, 'utf8')) as AssetIndex;
     const jobs = Object.entries(index.objects).map(([name, object]) => {
       const prefix = object.hash.slice(0, 2);
@@ -233,7 +276,12 @@ export class VersionService {
       };
     });
 
-    await this.downloads.downloadMany(jobs);
+    console.log(`[VersionService] Downloading ${jobs.length} assets for ${version.assetIndex.id}`);
+    onStage?.(`Downloading assets: 0% (0/${jobs.length})`);
+    await this.downloads.downloadMany(jobs, settings.maxParallelDownloads, (completed, total) => {
+      onStage?.(`Downloading assets: ${Math.round((completed / total) * 100)}% (${completed}/${total})`);
+    });
+    console.log(`[VersionService] Finished downloading assets for ${version.assetIndex.id}`);
   }
 
   private async extractNatives(version: MojangVersion, librariesRoot: string, nativesDir: string): Promise<void> {
@@ -379,5 +427,31 @@ export class VersionService {
       seen.set(`${library.name}:${JSON.stringify(library.natives ?? {})}`, library);
     }
     return [...seen.values()];
+  }
+
+  private async isFresh(path: string, ttlMs: number): Promise<boolean> {
+    try {
+      const file = await stat(path);
+      return Date.now() - file.mtimeMs <= ttlMs;
+    } catch {
+      return false;
+    }
+  }
+
+  private async fetchJsonWithTimeout<T>(url: string, timeoutMs: number): Promise<T> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(new Error(`Request timeout after ${timeoutMs}ms: ${url}`)), timeoutMs);
+    try {
+      const response = await fetch(url, {
+        signal: controller.signal,
+        headers: { 'User-Agent': 'DawnLauncher/0.1 (+https://dawn.local)' }
+      });
+      if (!response.ok) {
+        throw new Error(`Request failed (${response.status}) for ${url}`);
+      }
+      return (await response.json()) as T;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 }

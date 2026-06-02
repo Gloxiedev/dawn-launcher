@@ -74,16 +74,13 @@ export class JavaService {
 
   requiredMajor(gameVersion: string): number {
     const [major, minor, patch] = gameVersion.split('.').map((part) => Number(part.replace(/\D.*/, '')) || 0);
-    if (major > 1 || (major === 1 && (minor >= 21 || (minor === 20 && patch >= 5)))) {
+    if (major > 1 || (major === 1 && (minor > 20 || (minor === 20 && patch >= 5)))) {
       return 21;
     }
     if (major === 1 && minor >= 18) {
       return 17;
     }
-    if (major === 1 && minor === 17) {
-      return 16;
-    }
-    if (major === 1 && minor <= 16) {
+    if (major === 1 && minor <= 17) {
       return 8;
     }
     return 21;

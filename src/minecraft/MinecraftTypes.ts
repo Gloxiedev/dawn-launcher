@@ -90,6 +90,7 @@ export interface LaunchPlanInput {
   account: LauncherAccount;
   java: JavaRuntime;
   settings: LauncherSettings;
+  onStage?: (message: string) => void;
 }
 
 export interface LaunchPlan {
