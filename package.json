@@ -1,0 +1,96 @@
+{
+  "name": "dawn-launcher",
+  "version": "0.1.0",
+  "description": "A premium cross-platform Minecraft launcher desktop app.",
+  "author": "Dawn Launcher",
+  "private": true,
+  "type": "module",
+  "main": "out/main/main.js",
+  "scripts": {
+    "dev:web": "vite --config vite.web.config.ts",
+    "build:web": "vite build --config vite.web.config.ts",
+    "dev": "electron-vite dev",
+    "build": "tsc --noEmit && electron-vite build",
+    "preview": "electron-vite preview",
+    "clean:release": "node scripts/clean-release.mjs",
+    "dist": "npm run clean:release && npm run build && electron-builder",
+    "dist:all": "npm run clean:release && npm run build && electron-builder -mwl",
+    "dist:linux": "npm run clean:release && npm run build && electron-builder -l",
+    "dist:win": "npm run clean:release && npm run build && electron-builder -w",
+    "dist:mac": "npm run clean:release && npm run build && electron-builder -m",
+    "postinstall": "node scripts/repair-electron.mjs",
+    "repair:electron": "node scripts/repair-electron.mjs",
+    "verify": "node scripts/verify-project.mjs"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.0.4",
+    "adm-zip": "^0.5.16",
+    "clsx": "^2.1.1",
+    "electron-updater": "^6.6.2",
+    "extract-zip": "^2.0.1",
+    "fast-xml-parser": "^5.2.5",
+    "framer-motion": "^12.23.24",
+    "lucide-react": "^0.552.0",
+    "nanoid": "^5.1.6",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.7",
+    "@types/node": "^24.9.1",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "autoprefixer": "^10.4.21",
+    "electron": "^42.3.0",
+    "electron-builder": "^26.0.12",
+    "electron-vite": "^4.0.1",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.18",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.11"
+  },
+  "build": {
+    "appId": "app.dawn.launcher",
+    "productName": "Dawn Launcher",
+    "artifactName": "${productName}-${version}.${ext}",
+    "directories": {
+      "output": "release",
+      "buildResources": "assets"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "artifactName": "${productName}-${version}-Setup.${ext}"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64", "ia32"]
+        }
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.utilities"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Game",
+      "maintainer": "Dawn Launcher"
+    }
+  }
+}

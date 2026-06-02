@@ -1,0 +1,3 @@
+- [Background assets](background-assets.md) — available backgrounds and correct section assignments; background3.png does NOT exist.
+- [Launch history system](launch-history.md) — how persistent launch history is stored, tracked, and exposed to the renderer.
+- [Mock Dawn API](mock-dawn.md) — mockDawn.ts is the web-preview shim; history, process simulation, and all DawnApi namespaces must be kept in sync.
