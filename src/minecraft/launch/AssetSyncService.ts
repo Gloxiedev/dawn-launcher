@@ -71,7 +71,7 @@ export class AssetSyncService {
       return;
     }
 
-    const downloadBeforeLaunch = settings.performanceMode || settings.downloadAssetsBeforeLaunch === true;
+    const downloadBeforeLaunch = settings.downloadAssetsBeforeLaunch !== false;
     if (!downloadBeforeLaunch) {
       onStage?.(
         `Launching with ${cached}/${jobs.length} assets (${pending.length} missing — enable "Download assets before launch" in Settings to sync first)`

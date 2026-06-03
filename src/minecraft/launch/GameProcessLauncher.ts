@@ -35,7 +35,7 @@ export class GameProcessLauncher {
       child.once('spawn', () => {
         setTimeout(() => {
           if (child.killed || child.exitCode !== null) {
-            finish(new Error(`Minecraft exited immediately with code ${child.exitCode ?? 'unknown'}`));
+            finish(new Error(`Minecraft exited immediately with code ${child.exitCode ?? 'unknown'} — check the console for Java errors`));
             return;
           }
           if (!child.pid) {
@@ -46,9 +46,9 @@ export class GameProcessLauncher {
             process.kill(child.pid, 0);
             finish();
           } catch {
-            finish(new Error('Minecraft process died during startup'));
+            finish(new Error('Minecraft process died during startup — check the console for Java errors'));
           }
-        }, 500);
+        }, 3000);
       });
     });
   }

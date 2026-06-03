@@ -43,7 +43,10 @@ export class LaunchPlanBuilder {
     const versionRoot = join(this.paths.versionsRoot(ctx.settings), version.id);
     const clientJar = join(versionRoot, `${version.id}.jar`);
     const nativesDir = join(versionRoot, 'natives');
+
     await mkdir(nativesDir, { recursive: true });
+    await mkdir(ctx.instance.gameDir, { recursive: true });
+
     await this.natives.extract(version, librariesRoot, nativesDir, (library) => this.includeLibrary(library), ctx.onStage);
 
     this.throwIfAborted(ctx.signal);
@@ -65,7 +68,7 @@ export class LaunchPlanBuilder {
       game_directory: ctx.instance.gameDir,
       assets_root: assetsRoot,
       assets_index_name: version.assetIndex?.id || version.assets || version.id,
-      auth_uuid: ctx.account.uuid.replace(/-/g, ''),
+      auth_uuid: ctx.account.uuid,
       auth_access_token: ctx.account.accessToken || '0',
       clientid: '',
       auth_xuid: '',
@@ -153,8 +156,8 @@ export class LaunchPlanBuilder {
 
   private allowRules(rules: MojangRule[] | undefined, features: Record<string, boolean>): boolean {
     if (!rules?.length) return true;
-    
-    let allowed = true;
+
+    let allowed = false;
     for (const rule of rules) {
       if (this.matchesRule(rule, features)) {
         allowed = rule.action === 'allow';
@@ -166,7 +169,7 @@ export class LaunchPlanBuilder {
   private matchesRule(rule: MojangRule, features: Record<string, boolean>): boolean {
     if (rule.os) {
       if (rule.os.name && rule.os.name !== this.osName()) return false;
-      if (rule.os.arch && !process.arch.includes(rule.os.arch)) return false;
+      if (rule.os.arch && !this.matchesArch(rule.os.arch)) return false;
     }
     if (rule.features) {
       for (const [name, value] of Object.entries(rule.features)) {
@@ -180,6 +183,14 @@ export class LaunchPlanBuilder {
     if (process.platform === 'win32') return 'windows';
     if (process.platform === 'darwin') return 'osx';
     return 'linux';
+  }
+
+  private matchesArch(ruleArch: string): boolean {
+    const nodeArch = process.arch;
+    if (ruleArch === 'x86') return nodeArch === 'ia32';
+    if (ruleArch === 'x86_64' || ruleArch === 'x64') return nodeArch === 'x64';
+    if (ruleArch === 'aarch64') return nodeArch === 'arm64';
+    return nodeArch.includes(ruleArch);
   }
 
   private throwIfAborted(signal?: AbortSignal): void {

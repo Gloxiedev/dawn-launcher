@@ -4,9 +4,6 @@ import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { MojangLibrary, MojangVersion } from '../MinecraftTypes';
 
-const NATIVE_SUBDIRS = ['java', 'jna', 'lwjgl', 'netty'] as const;
-type NativeSubdir = (typeof NATIVE_SUBDIRS)[number];
-
 export class NativeExtractService {
   async extract(
     version: MojangVersion,
@@ -25,41 +22,38 @@ export class NativeExtractService {
       await rm(nativesDir, { recursive: true, force: true });
     }
     await mkdir(nativesDir, { recursive: true });
-    for (const sub of NATIVE_SUBDIRS) {
-      await mkdir(join(nativesDir, sub), { recursive: true });
-    }
 
     let extracted = 0;
     let skipped = 0;
     let filtered = 0;
     const missingFiles: string[] = [];
-    
+
     for (const library of version.libraries) {
       if (!includeLibrary(library)) {
         filtered += 1;
         continue;
       }
-      
+
       const native = library.natives?.[this.osName()]?.replace('${arch}', process.arch === 'x64' ? '64' : '32');
       if (!native) {
         skipped += 1;
         continue;
       }
-      
+
       let download = library.downloads?.classifiers?.[native];
       if (!download && library.url) {
         const [group, artifact, ver] = library.name.split(':');
         if (group && artifact && ver) {
           const path = `${group.replace(/\./g, '/')}/${artifact}/${ver}/${artifact}-${ver}-${native}.jar`;
-          download = { path };
+          download = { path, url: `${library.url.replace(/\/$/, '')}/${path}` };
         }
       }
-      
+
       if (!download?.path) {
         skipped += 1;
         continue;
       }
-      
+
       const source = join(librariesRoot, download.path);
       if (!existsSync(source)) {
         skipped += 1;
@@ -67,20 +61,24 @@ export class NativeExtractService {
         continue;
       }
 
-      const subdir = this.nativeSubdir(library.name, download.path);
-      await extract(source, { dir: join(nativesDir, subdir) });
+      await extract(source, { dir: nativesDir });
       extracted += 1;
     }
 
     if (!extracted) {
-      const details = missingFiles.length > 0 
-        ? `Missing ${missingFiles.length} files (samples: ${missingFiles.slice(0, 3).join('; ')})`
-        : `No native classifiers found (filtered: ${filtered}, skipped: ${skipped}/${version.libraries.length - filtered})`;
-      throw new Error(`No native libraries were extracted. ${details}\nReinstall the Minecraft version.`);
+      if (missingFiles.length > 0) {
+        const details = `Missing ${missingFiles.length} native JARs (examples: ${missingFiles.slice(0, 3).join('; ')})`;
+        throw new Error(`No native libraries were extracted. ${details}\nReinstall the Minecraft version.`);
+      }
+      const details = `No native classifiers found for this platform (filtered: ${filtered}, skipped: ${skipped}/${version.libraries.length - filtered})`;
+      onStage?.(`No platform-specific natives needed (${details})`);
+      await writeFile(marker, version.id, 'utf8');
+      return;
     }
 
-    if (!(await this.hasNativeBinaries(join(nativesDir, 'lwjgl')))) {
-      throw new Error('Native library extraction failed (no LWJGL binaries found).');
+    const hasAnyBinaries = await this.hasNativeBinaries(nativesDir);
+    if (!hasAnyBinaries) {
+      throw new Error('Native library extraction produced no usable binaries (.so/.dll/.dylib). Reinstall the Minecraft version.');
     }
 
     await writeFile(marker, version.id, 'utf8');
@@ -95,7 +93,7 @@ export class NativeExtractService {
     if (cached !== versionId) {
       return false;
     }
-    return this.hasNativeBinaries(join(nativesDir, 'lwjgl'));
+    return this.hasNativeBinaries(nativesDir);
   }
 
   private async hasNativeBinaries(dir: string): Promise<boolean> {
@@ -103,16 +101,9 @@ export class NativeExtractService {
       return false;
     }
     try {
-      const entries = await readdir(dir, { withFileTypes: true });
+      const entries = await readdir(dir, { withFileTypes: true, recursive: true });
       for (const entry of entries) {
-        const path = join(dir, entry.name);
-        if (entry.isDirectory()) {
-          if (await this.hasNativeBinaries(path)) {
-            return true;
-          }
-          continue;
-        }
-        if (/\.(so|dll|dylib)(\.|$)/i.test(entry.name)) {
+        if (!entry.isDirectory() && /\.(so|dll|dylib)(\.|$)/i.test(entry.name)) {
           return true;
         }
       }
@@ -120,14 +111,6 @@ export class NativeExtractService {
       return false;
     }
     return false;
-  }
-
-  private nativeSubdir(libraryName: string, artifactPath: string): NativeSubdir {
-    const text = `${libraryName} ${artifactPath}`.toLowerCase();
-    if (text.includes('lwjgl')) return 'lwjgl';
-    if (text.includes('jna')) return 'jna';
-    if (text.includes('netty')) return 'netty';
-    return 'java';
   }
 
   private osName(): 'windows' | 'osx' | 'linux' {

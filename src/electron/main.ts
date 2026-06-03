@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { join } from 'node:path';
 import type { DownloadProgress, LauncherAccount, LauncherSettings, MarketplaceProject, MarketplaceSearchQuery, NotificationItem, ProcessState } from '@/types/launcher';
 import { MarketplaceService } from '@/api/MarketplaceService';
@@ -15,6 +15,9 @@ import { PluginService } from '@/launcher/PluginService';
 import { LoaderService } from '@/minecraft/LoaderService';
 import { MinecraftService } from '@/minecraft/MinecraftService';
 import { VersionService } from '@/minecraft/VersionService';
+
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-background-timer-throttling');
 
 let mainWindow: BrowserWindow | undefined;
 
@@ -91,7 +94,8 @@ async function createWindow(settings?: LauncherSettings): Promise<void> {
       preload: join(__dirname, '../preload/preload.mjs'),
       sandbox: false,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      backgroundThrottling: false
     }
   });
 
@@ -102,6 +106,20 @@ async function createWindow(settings?: LauncherSettings): Promise<void> {
   });
   mainWindow.on('close', () => {
     void saveWindowBounds();
+  });
+
+  mainWindow.on('unresponsive', () => {
+    const win = mainWindow;
+    if (!win) return;
+    void dialog.showMessageBox(win, {
+      type: 'warning',
+      title: 'Dawn Launcher',
+      message: 'The launcher is busy (downloading or processing game files) and is temporarily not responding.',
+      detail: 'This is normal during asset downloads or large library scans. Please wait a moment.',
+      buttons: ['Wait'],
+      defaultId: 0,
+      cancelId: 0
+    });
   });
 
   mainWindow.once('ready-to-show', () => {

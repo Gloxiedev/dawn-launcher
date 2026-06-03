@@ -59,16 +59,16 @@ export class JavaService {
     }
 
     const runtimes = await this.scan(settings);
-    const exact = runtimes.find((runtime) => runtime.major === requiredMajor);
-    if (exact) {
-      return exact;
+    const compatible = runtimes.find((runtime) => runtime.major >= requiredMajor);
+    if (compatible) {
+      return compatible;
     }
 
     await this.logger?.info('java', `Installing Java ${requiredMajor} for Minecraft ${gameVersion}`);
     try {
       const installedPath = await this.installer.ensureInstalled(settings, requiredMajor);
       const installed = await this.inspect(installedPath);
-      if (installed?.valid && installed.major === requiredMajor) {
+      if (installed?.valid && installed.major >= requiredMajor) {
         return installed;
       }
     } catch (error) {
@@ -83,25 +83,23 @@ export class JavaService {
     }
 
     throw new Error(
-      `Java ${requiredMajor} is required for Minecraft ${gameVersion}. Install it in Settings → Java Runtimes (found Java ${runtimes[0]?.major ?? 'none'}).`
+      `Java ${requiredMajor}+ is required for Minecraft ${gameVersion}. Install it in Settings → Java Runtimes (found Java ${runtimes[0]?.major ?? 'none'}).`
     );
   }
 
   private async inspectManaged(settings: LauncherSettings, major: number): Promise<JavaRuntime | undefined> {
-    const root = join(this.paths.runtimeRoot(settings), `java-${major}`);
-    const executable = process.platform === 'win32' ? 'java.exe' : 'java';
     const candidates = new Set<string>();
-    await this.collectJavaFromRoot(root, candidates);
-    for (const path of candidates) {
-      const runtime = await this.inspect(path);
-      if (runtime?.valid && runtime.major === major) {
-        return runtime;
-      }
+    for (const installedMajor of [major, major + 1, major + 2, major + 4]) {
+      const root = join(this.paths.runtimeRoot(settings), `java-${installedMajor}`);
+      await this.collectJavaFromRoot(root, candidates);
     }
-    return undefined;
+    const runtimes = await Promise.all([...candidates].map((path) => this.inspect(path)));
+    const valid = runtimes
+      .filter((r): r is JavaRuntime => Boolean(r?.valid && r.major >= major))
+      .sort((a, b) => a.major - b.major);
+    return valid[0];
   }
 
-  /** Resolve Java major from a Minecraft version id (e.g. 1.21.4, 1.21.4-forge). */
   requiredMajorForVersion(versionId: string): number {
     const snapshot = versionId.match(/^(\d+)\.(\d+)/);
     if (snapshot) {
@@ -115,11 +113,8 @@ export class JavaService {
     if (major > 1 || (major === 1 && (minor > 20 || (minor === 20 && patch >= 5)))) {
       return 21;
     }
-    if (major === 1 && minor >= 18) {
+    if (major === 1 && minor >= 17) {
       return 17;
-    }
-    if (major === 1 && minor === 17) {
-      return 16;
     }
     if (major === 1 && minor <= 16) {
       return 8;

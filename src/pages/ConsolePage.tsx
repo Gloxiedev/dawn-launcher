@@ -1,4 +1,4 @@
-import { Eraser, Square } from 'lucide-react';
+import { Check, Copy, Eraser, Square } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/Button';
 import { Panel } from '@/components/Panel';
@@ -40,8 +40,19 @@ export function ConsolePage() {
   const visible = events
     .filter((event) => event.time >= localClearAt)
     .filter((event) => !librarySearch.trim() || event.message.toLowerCase().includes(librarySearch.trim().toLowerCase()));
+  const [copied, setCopied] = useState(false);
   const processState = selectedInstanceId ? processStates[selectedInstanceId] ?? 'idle' : 'idle';
   const canStop = ['running', 'launching', 'downloading', 'preparing', 'stopping'].includes(processState);
+
+  const copyLog = () => {
+    const text = visible
+      .map((e) => `${new Date(e.time).toLocaleTimeString()}  ${e.level.toUpperCase().padEnd(5)}  ${e.message}`)
+      .join('\n');
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
@@ -54,6 +65,9 @@ export function ConsolePage() {
           <span className={cn('rounded-md border px-3 py-1.5 text-sm font-medium', processTone[processState])}>
             {processLabels[processState]}
           </span>
+          <Button icon={copied ? <Check size={16} /> : <Copy size={16} />} onClick={copyLog} disabled={!visible.length}>
+            {copied ? 'Copied!' : 'Copy'}
+          </Button>
           <Button icon={<Eraser size={16} />} onClick={() => setLocalClearAt(Date.now())}>
             Clear
           </Button>

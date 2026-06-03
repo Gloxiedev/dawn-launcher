@@ -1,13 +1,12 @@
 import { join } from 'node:path';
 import type { LauncherSettings } from '@/types/launcher';
 import type { DownloadJob } from '@/launcher/DownloadManager';
-import { DownloadManager } from '@/launcher/DownloadManager';
+import { DownloadManager, resolveParallelDownloads } from '@/launcher/DownloadManager';
 import { LauncherPaths } from '@/launcher/LauncherPaths';
 import type { MojangDownload, MojangLibrary, MojangVersion } from '../MinecraftTypes';
 
 const MOJANG_LIBRARIES = 'https://libraries.minecraft.net/';
 
-/** Optional fallbacks only — Mojang URL stays primary on each job. */
 const MAVEN_MIRROR_FALLBACKS = [
   'https://bmclapi2.bangbang93.com/maven',
   'https://download.mcbbs.net/maven'
@@ -56,13 +55,18 @@ export class GameFileSyncService {
       return;
     }
 
-    await this.downloads.downloadPending(pending, signal, {
-      hardTimeoutMs: 45_000,
-      idleTimeoutMs: 10_000,
-      maxRetries: 3,
-      onFileStart: (label) => onStage?.(`Downloading: ${label}`)
-    });
-    onStage?.(`Libraries verified (${jobs.length}/${jobs.length})`);
+    const parallel = resolveParallelDownloads(settings);
+    let done = 0;
+    await this.downloads.downloadMany(
+      pending,
+      parallel,
+      (completed, total) => {
+        done = completed;
+        onStage?.(`Downloading libraries: ${completed}/${total}`);
+      },
+      signal
+    );
+    onStage?.(`Libraries verified (${cached + done}/${jobs.length})`);
   }
 
   private job(id: string, label: string, download: MojangDownload, targetPath: string): DownloadJob {
@@ -74,7 +78,7 @@ export class GameFileSyncService {
       targetPath,
       sha1: download.sha1,
       size: download.size,
-      cacheMode: 'size-only'
+      cacheMode: download.sha1 ? 'verify-sha1' : 'size-only'
     };
   }
 
@@ -98,7 +102,7 @@ export class GameFileSyncService {
     const os = process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'osx' : 'linux';
     const nativeClassifier = library.natives?.[os]?.replace('${arch}', process.arch === 'x64' ? '64' : '32');
     if (!nativeClassifier) return undefined;
-    
+
     const classifierDownload = library.downloads?.classifiers?.[nativeClassifier];
     if (classifierDownload) {
       return classifierDownload;

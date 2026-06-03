@@ -1,4 +1,5 @@
 import { execFile, type ChildProcess } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
 import { nanoid } from 'nanoid';
 import type { ConsoleEvent, Instance, LaunchHistoryEntry, LaunchRequest, LaunchResult, LauncherAccount, ProcessState } from '@/types/launcher';
@@ -164,9 +165,14 @@ export class MinecraftService {
 
       const gameVersion = await stage('Resolve Version Alias', async () => this.versions.resolveAlias(instance!.gameVersion));
       const versionId = instance.launchVersionId || gameVersion;
-      const requiredJavaMajor = await stage('Resolve Required Java', async () =>
-        this.java.requiredMajorForVersion(await this.versions.resolveAlias(versionId))
-      );
+
+      const requiredJavaMajor = await stage('Resolve Required Java', async () => {
+        const fromManifest = await this.versions.requiredJavaMajor(versionId, data.settings);
+        if (fromManifest) {
+          return fromManifest;
+        }
+        return this.java.requiredMajorForVersion(gameVersion);
+      });
 
       this.setState(input.instanceId, 'downloading');
       this.emit(input.instanceId, 'info', 'Downloading and verifying game files');
@@ -174,14 +180,14 @@ export class MinecraftService {
       const runtime = await stage('Select Java Runtime', async () => {
         if (instance!.javaPath) {
           const custom = await this.java.inspect(instance!.javaPath);
-          if (custom?.valid && custom.major === requiredJavaMajor) {
+          if (custom?.valid && custom.major >= requiredJavaMajor) {
             return custom;
           }
           if (custom?.valid) {
             this.emit(
               input.instanceId,
               'warn',
-              `Instance Java ${custom.major} ignored; Minecraft ${gameVersion} needs Java ${requiredJavaMajor}.`
+              `Instance Java ${custom.major} is below the required Java ${requiredJavaMajor} for Minecraft ${gameVersion}. Searching for a compatible runtime.`
             );
           }
         }
@@ -189,11 +195,20 @@ export class MinecraftService {
       });
 
       if (!runtime?.path) {
-        throw new Error(`No compatible Java runtime found. Required: Java ${requiredJavaMajor || '8+'}`);
+        throw new Error(`No compatible Java runtime found. Required: Java ${requiredJavaMajor}+`);
       }
-      if (runtime.major !== requiredJavaMajor) {
+
+      if (runtime.major < requiredJavaMajor) {
         throw new Error(
-          `Java ${requiredJavaMajor} is required for Minecraft ${gameVersion}, but Java ${runtime.major} was selected at ${runtime.path}.`
+          `Java ${requiredJavaMajor}+ is required for Minecraft ${gameVersion}, but Java ${runtime.major} was selected at ${runtime.path}. Install a newer Java runtime in Settings.`
+        );
+      }
+
+      if (runtime.major > requiredJavaMajor && requiredJavaMajor === 8) {
+        this.emit(
+          input.instanceId,
+          'warn',
+          `Java ${runtime.major} detected for Minecraft ${gameVersion} which requires Java ${requiredJavaMajor}. This may cause compatibility issues with very old Minecraft versions.`
         );
       }
 
@@ -216,11 +231,11 @@ export class MinecraftService {
           try {
             return await this.withTimeout(
               this.versions.createLaunchPlan({
-              versionId,
-              instance,
-              account: this.normalizeAccount(account),
-              java: runtime,
-              settings: data.settings,
+                versionId,
+                instance,
+                account: this.normalizeAccount(account),
+                java: runtime,
+                settings: data.settings,
                 onStage: (message) => this.emit(input.instanceId, 'info', message),
                 signal: launchPlanAbort.signal
               }),
@@ -419,7 +434,7 @@ export class MinecraftService {
     if (account.kind === 'offline') {
       return {
         ...account,
-        accessToken: '0'
+        accessToken: account.accessToken || randomUUID()
       };
     }
     if (!account.accessToken) {
