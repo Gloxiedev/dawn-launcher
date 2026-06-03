@@ -187,7 +187,7 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
     set({ busyLabel: 'Launching Minecraft', activePage: 'console', error: undefined });
     try {
       await window.dawn.minecraft.launch({ instanceId: selectedInstanceId, accountId: selectedAccountId });
-      await get().refresh();
+      void get().refresh();
     } catch (error) {
       const message = friendlyErrorMessage(error);
       set((state) => ({

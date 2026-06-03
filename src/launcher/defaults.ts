@@ -3,7 +3,7 @@ import type { LauncherDatabaseShape, LauncherSettings } from '@/types/launcher';
 export const defaultSettings: LauncherSettings = {
   accentColor: '#ff7a1a',
   theme: 'ember',
-  maxParallelDownloads: 1,
+  maxParallelDownloads: 16,
   windowWidth: 1280,
   windowHeight: 800,
   defaultRamMb: 4096,

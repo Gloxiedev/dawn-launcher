@@ -53,6 +53,8 @@ export interface LauncherSettings {
   discordRpc: boolean;
   startMinimized: boolean;
   performanceMode: boolean;
+  /** When true, download all game assets before spawning Minecraft (slower). */
+  downloadAssetsBeforeLaunch?: boolean;
   experimentalFeatures: boolean;
   windowWidth?: number;
   windowHeight?: number;
