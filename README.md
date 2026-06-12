@@ -1,3 +1,5 @@
+[WARNING: There are no active developers contributing to this project as of 12/06/2026]
+
 # 🌅 Dawn Launcher
 
 Dawn Launcher is a modern, lightweight desktop Minecraft Java launcher built with Electron, React, TypeScript, and TailwindCSS. 
